@@ -1,0 +1,2318 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="theme-color" content="#87CEEB">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>Balon Patlatmaca</title>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            -webkit-tap-highlight-color: transparent;
+            user-select: none;
+            -webkit-user-select: none;
+            -webkit-touch-callout: none;
+        }
+
+        html, body {
+            height: 100%;
+            width: 100%;
+            overflow: hidden;
+            position: fixed;
+            background: #87CEEB;
+        }
+
+        input, textarea {
+            user-select: text;
+            -webkit-user-select: text;
+        }
+
+        body.dark-theme {
+            background: #000;
+            color: #fff;
+        }
+
+        /* ============ GİZLİLİK OYUN EKRANI ============ */
+        #privacyScreen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(180deg, #87CEEB 0%, #E0F7FA 40%, #B2DFDB 100%);
+            z-index: 9999;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+
+        canvas#gameCanvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+        }
+
+        .game-ui {
+            position: relative;
+            z-index: 10;
+            text-align: center;
+            pointer-events: none;
+        }
+
+        .game-title {
+            font-size: clamp(32px, 8vw, 48px);
+            font-weight: 900;
+            color: #fff;
+            text-shadow: 3px 3px 0 #FF6B6B, 6px 6px 0 rgba(0,0,0,0.1);
+            margin-bottom: 10px;
+            animation: float 3s ease-in-out infinite;
+        }
+
+        @keyframes float {
+            0%,100%{transform:translateY(0)}
+            50%{transform:translateY(-15px)}
+        }
+
+        .game-score {
+            font-size: clamp(48px, 15vw, 80px);
+            font-weight: 900;
+            color: #FF6B6B;
+            text-shadow: 3px 3px 0 #fff;
+            margin: 20px 0;
+        }
+
+        .game-subtitle {
+            font-size: clamp(14px, 4vw, 18px);
+            color: #555;
+            margin-bottom: 30px;
+        }
+
+        .game-buttons {
+            display: flex;
+            gap: 15px;
+            flex-direction: column;
+            pointer-events: auto;
+        }
+
+        .game-btn {
+            padding: 18px 40px;
+            font-size: 20px;
+            font-weight: 700;
+            border: none;
+            border-radius: 50px;
+            cursor: pointer;
+            transition: all 0.2s;
+            background: #FF6B6B;
+            color: #fff;
+            box-shadow: 0 8px 0 #CC5555, 0 10px 20px rgba(0,0,0,0.15);
+            letter-spacing: 1px;
+            text-align: center;
+        }
+
+        .game-btn:active {
+            transform: translateY(4px);
+            box-shadow: 0 4px 0 #CC5555, 0 5px 10px rgba(0,0,0,0.15);
+        }
+
+        .game-btn.secondary {
+            background: #4ECDC4;
+            box-shadow: 0 8px 0 #3AA99F, 0 10px 20px rgba(0,0,0,0.15);
+        }
+
+        .game-btn.secondary:active {
+            box-shadow: 0 4px 0 #3AA99F, 0 5px 10px rgba(0,0,0,0.15);
+        }
+
+        .secret-search-btn {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            z-index: 10000;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: rgba(255,255,255,0.5);
+            border: 2px solid rgba(255,255,255,0.7);
+            color: #888;
+            font-size: 16px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            backdrop-filter: blur(5px);
+            transition: all 0.2s;
+        }
+
+        .secret-search-btn:active {
+            transform: scale(0.9);
+            background: rgba(255,255,255,0.8);
+        }
+
+        .password-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.75);
+            z-index: 10001;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            backdrop-filter: blur(12px);
+        }
+
+        .password-overlay.active {
+            display: flex;
+        }
+
+        .password-box {
+            background: #fff;
+            padding: 30px 24px;
+            border-radius: 24px;
+            text-align: center;
+            width: 90%;
+            max-width: 340px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.35);
+            animation: popIn 0.25s ease;
+        }
+
+        @keyframes popIn {
+            from{opacity:0;transform:scale(0.9)}
+            to{opacity:1;transform:scale(1)}
+        }
+
+        .password-box h3 {
+            font-size: 17px;
+            color: #444;
+            margin-bottom: 6px;
+            font-weight: 600;
+        }
+
+        .password-box .hint {
+            font-size: 12px;
+            color: #999;
+            margin-bottom: 22px;
+        }
+
+        .password-input {
+            width: 100%;
+            padding: 15px 18px;
+            font-size: 16px;
+            border: 2px solid #e0e0e0;
+            border-radius: 16px;
+            text-align: center;
+            letter-spacing: 4px;
+            outline: none;
+            background: #f9f9f9;
+            color: #333;
+            transition: border 0.2s;
+            autocomplete: off;
+            autocorrect: off;
+            autocapitalize: off;
+            spellcheck: false;
+        }
+
+        .password-input:focus {
+            border-color: #FF6B6B;
+            background: #fff;
+        }
+
+        .password-submit {
+            margin-top: 18px;
+            width: 100%;
+            padding: 14px;
+            font-size: 16px;
+            font-weight: 700;
+            border: none;
+            border-radius: 16px;
+            background: #FF6B6B;
+            color: #fff;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .password-submit:active {
+            transform: scale(0.97);
+            opacity: 0.9;
+        }
+
+        .password-error {
+            color: #FF6B6B;
+            font-size: 13px;
+            margin-top: 10px;
+            display: none;
+        }
+
+        /* ============ ASIL UYGULAMA ============ */
+        #appScreen {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 5000;
+            flex-direction: column;
+            background: #000;
+        }
+
+        #appScreen.active {
+            display: flex;
+        }
+
+        .header {
+            background: #000;
+            padding: 12px 16px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid #262626;
+            height: 60px;
+            flex-shrink: 0;
+            z-index: 100;
+        }
+
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .room-info {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .room-info h2 {
+            font-size: 16px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .room-code {
+            background: #1a1a1a;
+            padding: 4px 8px;
+            border-radius: 6px;
+            font-size: 12px;
+            color: #0095F6;
+            border: 1px solid #333;
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .online-count {
+            padding: 6px 12px;
+            font-size: 13px;
+            color: #8e8e8e;
+            background: rgba(255,255,255,0.05);
+            border-radius: 20px;
+            border: 1px solid #333;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .online-count i {
+            font-size: 14px;
+            color: #4cd964;
+        }
+
+        .container {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+            height: calc(100vh - 60px);
+            position: relative;
+        }
+
+        .video-section {
+            flex: 2;
+            display: flex;
+            flex-direction: column;
+            background: #000;
+            min-width: 0;
+            height: 100%;
+            transition: all 0.3s ease;
+        }
+
+        .video-container {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #000;
+            position: relative;
+            min-height: 0;
+        }
+
+        .video-player {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+
+        .no-video {
+            text-align: center;
+            padding: 20px;
+            color: #8e8e8e;
+            width: 100%;
+        }
+
+        .no-video-icon {
+            font-size: clamp(48px, 10vw, 64px);
+            margin-bottom: 15px;
+            opacity: 0.5;
+        }
+
+        .video-controls {
+            padding: 8px 12px;
+            background: #1a1a1a;
+            display: flex;
+            gap: 6px;
+            justify-content: center;
+            align-items: center;
+            border-top: 1px solid #262626;
+            flex-wrap: wrap;
+            flex-shrink: 0;
+        }
+
+        .control-btn {
+            padding: 6px 12px;
+            border: none;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 13px;
+            background: #262626;
+            color: #fff;
+            border: 1px solid #363636;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .control-btn:active {
+            transform: scale(0.95);
+        }
+
+        .chat-section {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background: #000;
+            border-left: 1px solid #262626;
+            min-width: 300px;
+            max-width: 400px;
+            height: 100%;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .messages {
+            flex: 1 1 auto;
+            padding: 16px;
+            overflow-y: auto;
+            overflow-x: hidden;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            height: calc(100% - 70px);
+            min-height: 0;
+            -webkit-overflow-scrolling: touch;
+        }
+
+        .message {
+            display: flex;
+            gap: 8px;
+            max-width: 85%;
+            animation: msgPop 0.2s ease;
+            position: relative;
+            width: fit-content;
+        }
+
+        @keyframes msgPop {
+            from{opacity:0;transform:translateY(10px)}
+            to{opacity:1;transform:translateY(0)}
+        }
+
+        .message.own {
+            align-self: flex-end;
+            flex-direction: row-reverse;
+            margin-left: auto;
+        }
+
+        .message-avatar {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            object-fit: cover;
+            flex-shrink: 0;
+            border: 2px solid #262626;
+            align-self: flex-end;
+        }
+
+        .message.own .message-avatar {
+            display: none;
+        }
+
+        .message-content {
+            padding: 10px 14px;
+            border-radius: 22px;
+            background: #262626;
+            max-width: 100%;
+            word-wrap: break-word;
+            word-break: break-word;
+            position: relative;
+            font-size: 14px;
+            line-height: 1.4;
+            width: fit-content;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+        }
+
+        .message.own .message-content {
+            background: #34c759;
+            color: #fff;
+            border-bottom-right-radius: 4px;
+        }
+
+        .message:not(.own) .message-content {
+            border-bottom-left-radius: 4px;
+        }
+
+        .message-sender {
+            font-size: 12px;
+            font-weight: 600;
+            color: #8e8e8e;
+            margin-bottom: 2px;
+        }
+
+        .message.own .message-sender {
+            display: none;
+        }
+
+        .message-text {
+            flex: 1;
+            word-break: break-word;
+            font-size: 14px;
+            line-height: 1.4;
+        }
+
+        .message-time {
+            font-size: 10px;
+            color: #8e8e8e;
+            margin-top: 4px;
+            text-align: right;
+        }
+
+        .message.own .message-time {
+            color: rgba(255,255,255,0.7);
+        }
+
+        .message-image {
+            max-width: 200px;
+            max-height: 200px;
+            width: auto;
+            height: auto;
+            border-radius: 12px;
+            margin-top: 8px;
+            cursor: pointer;
+            object-fit: cover;
+            display: block;
+        }
+
+        .message-sticker {
+            width: 150px;
+            height: 150px;
+            border-radius: 16px;
+            object-fit: cover;
+            cursor: pointer;
+        }
+
+        .message-reactions {
+            display: flex;
+            gap: 4px;
+            margin-top: 6px;
+            padding-top: 4px;
+            border-top: 1px solid rgba(255,255,255,0.1);
+            flex-wrap: wrap;
+        }
+
+        .reaction-badge {
+            background: #1a1a1a;
+            border-radius: 20px;
+            padding: 2px 8px;
+            font-size: 12px;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            border: 1px solid #363636;
+        }
+
+        .system-message {
+            align-self: center;
+            background: rgba(255,255,255,0.1);
+            padding: 6px 14px;
+            border-radius: 20px;
+            font-size: 12px;
+            color: #8e8e8e;
+            margin: 8px 0;
+            text-align: center;
+        }
+
+        .reply-indicator {
+            font-size: 12px;
+            padding: 4px 10px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 12px;
+            margin-bottom: 6px;
+            color: #8e8e8e;
+            border-left: 3px solid #34c759;
+        }
+
+        .chat-input-wrapper {
+            background: #1a1a1a;
+            border-top: 1px solid #262626;
+            padding: 12px;
+            position: relative;
+            flex-shrink: 0;
+            width: 100%;
+            bottom: 0;
+        }
+
+        .input-actions {
+            display: flex;
+            align-items: flex-end;
+            gap: 8px;
+            width: 100%;
+        }
+
+        .action-btn {
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
+            border: none;
+            background: #262626;
+            color: #fff;
+            font-size: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            flex-shrink: 0;
+            border: 1px solid #363636;
+        }
+
+        .action-btn:active {
+            transform: scale(0.95);
+        }
+
+        .photo-btn {
+            background: #E1306C;
+        }
+
+        .mic-btn {
+            background: #405DE6;
+        }
+
+        .chat-message-input {
+            flex: 1;
+            background: #262626;
+            border: 1px solid #363636;
+            border-radius: 25px;
+            padding: 12px 16px;
+            color: #fff;
+            font-size: 14px;
+            line-height: 1.4;
+            max-height: 100px;
+            min-height: 44px;
+            resize: none;
+            outline: none;
+            width: 100%;
+        }
+
+        .chat-message-input:focus {
+            border-color: #0095F6;
+        }
+
+        .send-btn {
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            border: none;
+            background: #ff3b30;
+            color: white;
+            font-size: 22px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            flex-shrink: 0;
+        }
+
+        .send-btn:active {
+            transform: scale(0.95);
+            background: #d63026;
+        }
+
+        .sticker-panel {
+            background: #1a1a1a;
+            border-radius: 20px 20px 0 0;
+            padding: 16px;
+            margin-top: 12px;
+            border: 1px solid #262626;
+            max-height: 350px;
+            overflow-y: auto;
+        }
+
+        .sticker-panel-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            font-weight: 600;
+        }
+
+        .sticker-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 10px;
+        }
+
+        .sticker-item {
+            width: 100%;
+            aspect-ratio: 1;
+            border-radius: 12px;
+            object-fit: cover;
+            cursor: pointer;
+            border: 2px solid #363636;
+            transition: transform 0.2s;
+        }
+
+        .sticker-item:active {
+            transform: scale(0.95);
+        }
+
+        .create-sticker-btn {
+            background: #0095F6;
+            border: none;
+            color: white;
+            padding: 8px 16px;
+            border-radius: 30px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.9);
+            z-index: 6000;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            backdrop-filter: blur(10px);
+        }
+
+        .modal.active {
+            display: flex;
+        }
+
+        .modal-content {
+            background: #1a1a1a;
+            padding: 25px;
+            border-radius: 24px;
+            width: 100%;
+            max-width: 500px;
+            max-height: 90vh;
+            overflow-y: auto;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.5);
+            border: 1px solid #333;
+            animation: slideUp 0.3s ease;
+        }
+
+        @keyframes slideUp {
+            from{opacity:0;transform:translateY(20px)}
+            to{opacity:1;transform:translateY(0)}
+        }
+
+        .modal-content h2 {
+            color: #fff;
+            margin-bottom: 20px;
+            font-size: 24px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .modal-header h2 {
+            margin-bottom: 0;
+        }
+
+        .close-modal {
+            background: transparent;
+            border: none;
+            color: #fff;
+            font-size: 24px;
+            cursor: pointer;
+            width: 40px;
+            height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            color: #ccc;
+            font-weight: 500;
+            font-size: 14px;
+        }
+
+        .form-input {
+            width: 100%;
+            padding: 16px 18px;
+            border: 2px solid #333;
+            border-radius: 16px;
+            font-size: 16px;
+            background: #262626;
+            color: #fff;
+            outline: none;
+            transition: border 0.2s ease;
+        }
+
+        .form-input:focus {
+            border-color: #0095F6;
+        }
+
+        .button-group {
+            display: flex;
+            gap: 12px;
+            margin-top: 25px;
+        }
+
+        .btn {
+            padding: 16px 24px;
+            font-size: 18px;
+            border: none;
+            border-radius: 16px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            font-weight: 600;
+            width: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        }
+
+        .btn:active {
+            transform: scale(0.98);
+        }
+
+        .btn-primary {
+            background: #0095F6;
+            color: #fff;
+        }
+
+        .btn-secondary {
+            background: #262626;
+            color: #fff;
+            border: 2px solid #333;
+        }
+
+        .btn-danger {
+            background: #ff3b30;
+            color: #fff;
+        }
+
+        .photo-options {
+            display: flex;
+            gap: 12px;
+            margin: 20px 0;
+        }
+
+        .photo-option-btn {
+            flex: 1;
+            padding: 16px 12px;
+            border: none;
+            border-radius: 20px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 8px;
+            transition: all 0.2s;
+        }
+
+        .photo-option-btn i {
+            font-size: 32px;
+        }
+
+        .photo-option-btn small {
+            font-size: 12px;
+            opacity: 0.8;
+        }
+
+        .secure-photo-btn {
+            background: #ff3b30;
+            color: white;
+        }
+
+        .normal-photo-btn {
+            background: #0095F6;
+            color: white;
+        }
+
+        .fullscreen-modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.98);
+            z-index: 7000;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            backdrop-filter: blur(10px);
+        }
+
+        .fullscreen-modal.active {
+            display: flex;
+        }
+
+        .fullscreen-image {
+            max-width: 95%;
+            max-height: 95%;
+            object-fit: contain;
+            border-radius: 16px;
+            cursor: default;
+        }
+
+        .close-fullscreen {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: #262626;
+            border: none;
+            color: #fff;
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            font-size: 28px;
+            cursor: pointer;
+            border: 2px solid #333;
+            z-index: 7001;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .close-fullscreen:active {
+            transform: scale(0.95);
+            background: #333;
+        }
+
+        .view-timer {
+            position: absolute;
+            bottom: 50px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #ff3b30;
+            color: white;
+            padding: 16px 32px;
+            border-radius: 50px;
+            font-weight: bold;
+            font-size: 22px;
+            z-index: 7001;
+            box-shadow: 0 5px 20px rgba(255,59,48,0.5);
+            border: 2px solid rgba(255,255,255,0.3);
+            animation: pulse 1s infinite;
+        }
+
+        @keyframes pulse {
+            0%{transform:translateX(-50%) scale(1)}
+            50%{transform:translateX(-50%) scale(1.05)}
+            100%{transform:translateX(-50%) scale(1)}
+        }
+
+        .reaction-menu {
+            position: fixed;
+            background: #262626;
+            border-radius: 40px;
+            padding: 8px 12px;
+            display: flex;
+            gap: 8px;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.5);
+            border: 1px solid #363636;
+            z-index: 2000;
+            animation: slideUp 0.2s ease;
+            transform: translateX(-50%);
+        }
+
+        .reaction-emoji {
+            font-size: 24px;
+            cursor: pointer;
+            padding: 8px;
+            border-radius: 50%;
+            transition: all 0.2s;
+            width: 44px;
+            height: 44px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .reaction-emoji:active {
+            background: #1a1a1a;
+            transform: scale(1.2);
+        }
+
+        .message-actions {
+            position: fixed;
+            background: #262626;
+            border-radius: 20px;
+            padding: 8px;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.5);
+            border: 1px solid #363636;
+            z-index: 2000;
+            min-width: 160px;
+        }
+
+        .action-item {
+            padding: 12px 16px;
+            cursor: pointer;
+            border-radius: 12px;
+            transition: background 0.2s;
+            font-size: 14px;
+            color: #fff;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .action-item:active {
+            background: #1a1a1a;
+        }
+
+        .action-item.delete {
+            color: #ff3b30;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        .loading-spinner {
+            border: 4px solid #333;
+            border-top: 4px solid #0095F6;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+
+        @keyframes spin {
+            0%{transform:rotate(0deg)}
+            100%{transform:rotate(360deg)}
+        }
+
+        .error-message {
+            background: #ff3b30;
+            color: white;
+            padding: 15px;
+            border-radius: 12px;
+            margin: 10px 0;
+            text-align: center;
+        }
+
+        .success-message {
+            background: #34c759;
+            color: white;
+            padding: 15px;
+            border-radius: 12px;
+            margin: 10px 0;
+            text-align: center;
+        }
+
+        #recordingIndicator {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: #ff3b30;
+            color: white;
+            padding: 30px 40px;
+            border-radius: 30px;
+            z-index: 10000;
+            text-align: center;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+            border: 2px solid rgba(255,255,255,0.3);
+        }
+
+        #recordingIndicator i {
+            font-size: 48px;
+            display: block;
+            margin-bottom: 15px;
+        }
+
+        #recordingTimer {
+            font-size: 24px;
+            font-weight: bold;
+            margin: 15px 0;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                flex-direction: column;
+            }
+            .video-section {
+                height: 40vh;
+                max-height: 40vh;
+                min-height: 200px;
+            }
+            .chat-section {
+                max-width: 100%;
+                min-width: 100%;
+                height: calc(60vh - 60px);
+                border-left: none;
+                border-top: 1px solid #262626;
+            }
+            .message {
+                max-width: 90%;
+            }
+            .message-image {
+                max-width: 150px;
+                max-height: 150px;
+            }
+            .sticker-grid {
+                grid-template-columns: repeat(3, 1fr);
+            }
+        }
+    </style>
+</head>
+<body class="dark-theme">
+
+    <!-- ============ GİZLİLİK OYUN EKRANI ============ -->
+    <div id="privacyScreen">
+        <canvas id="gameCanvas"></canvas>
+
+        <button class="secret-search-btn" id="secretSearchBtn" title="Ara">
+            <i class="bi bi-search"></i>
+        </button>
+
+        <div class="game-ui">
+            <div class="game-title">🎈 Balon Patlatmaca</div>
+            <div class="game-score" id="gameScore">0</div>
+            <div class="game-subtitle">En yüksek skor: <span id="gameHighScore">0</span></div>
+            <div class="game-buttons">
+                <button class="game-btn" id="gameStartBtn">🎈 Oyuna Başla</button>
+                <button class="game-btn secondary" id="gameRestartBtn">🔄 Yeniden Başla</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Şifre Modalı -->
+    <div class="password-overlay" id="passwordOverlay">
+        <div class="password-box">
+            <h3>🔍 Uygulama hakkında arama yapın</h3>
+            <p class="hint">Aramak için yazıp Enter'a basın</p>
+            <input type="text" class="password-input" id="passwordInput" placeholder="Ara..." autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-lpignore="true">
+            <button class="password-submit" id="passwordSubmitBtn">Ara</button>
+            <p class="password-error" id="passwordError">❌ Hatalı arama terimi</p>
+        </div>
+    </div>
+
+    <!-- ============ ASIL UYGULAMA ============ -->
+    <div id="appScreen">
+        <div class="header">
+            <div class="header-left">
+                <div class="room-info">
+                    <h2><i class="bi bi-camera-reels-fill"></i> <span id="roomNameDisplay">Oda</span></h2>
+                    <div class="room-code"><i class="bi bi-key-fill"></i> Şifre: <span id="roomCodeDisplay">efkaza7634</span></div>
+                </div>
+            </div>
+            <div class="online-count" id="onlineCount"><i class="bi bi-person-fill"></i> <span>0 kişi</span></div>
+        </div>
+
+        <div class="container" id="mainContainer">
+            <div class="video-section" id="videoSection">
+                <div class="video-container" id="videoContainer">
+                    <div class="no-video" id="noVideo">
+                        <div class="no-video-icon"><i class="bi bi-camera-video-off-fill"></i></div>
+                        <h3>Video Yok</h3>
+                        <p>Kendi videonu yükle veya YouTube linki paylaş!</p>
+                    </div>
+                    <video id="videoPlayer" class="video-player" controls style="display:none;" controlsList="nodownload" playsinline></video>
+                    <div id="youtubeContainer" style="width:100%;height:100%;display:none;"></div>
+                </div>
+                <div class="video-controls" id="videoControls" style="display:none;">
+                    <button class="control-btn" onclick="app.seek(-10)">⏪ -10s</button>
+                    <button class="control-btn" id="playPauseBtn" onclick="app.togglePlay()">⏯️</button>
+                    <button class="control-btn" onclick="app.seek(10)">⏩ +10s</button>
+                    <select class="control-btn" id="playbackRate" onchange="app.changePlaybackRate(this.value)">
+                        <option value="0.5">0.5x</option>
+                        <option value="1" selected>1x</option>
+                        <option value="1.5">1.5x</option>
+                        <option value="2">2x</option>
+                    </select>
+                    <button class="control-btn" onclick="document.getElementById('videoFileInput').click()">📁 Video Yükle</button>
+                    <button class="control-btn" onclick="app.showYouTubeInput()">▶️ YouTube</button>
+                    <button class="control-btn btn-danger" onclick="app.deleteVideo()">🗑️ Kapat</button>
+                </div>
+            </div>
+
+            <div class="chat-section">
+                <div class="messages" id="messagesContainer"></div>
+                <div class="chat-input-wrapper">
+                    <div class="input-actions">
+                        <button class="action-btn" id="stickerBtn" title="Çıkartmalar">😊</button>
+                        <button class="action-btn photo-btn" id="photoBtn" title="Fotoğraf">📷</button>
+                        <button class="action-btn mic-btn" id="micBtn" title="Ses Kaydı">🎤</button>
+                        <textarea id="messageInput" class="chat-message-input" placeholder="Mesaj yaz..." rows="1"></textarea>
+                        <button class="send-btn" id="sendButton">➤</button>
+                    </div>
+                    <div class="sticker-panel" id="stickerPanel" style="display:none;">
+                        <div class="sticker-panel-header">
+                            <span>😊 Çıkartmalar</span>
+                            <button class="create-sticker-btn" id="createStickerBtn">+ Oluştur</button>
+                        </div>
+                        <div class="sticker-grid" id="myStickers"></div>
+                        <div id="createStickerPanel" style="display:none;margin-top:10px;">
+                            <input type="file" id="stickerImageInput" accept="image/*" multiple style="display:none;">
+                            <button class="btn btn-primary" onclick="document.getElementById('stickerImageInput').click()" style="font-size:14px;margin-bottom:10px;">📷 Fotoğraf Seç</button>
+                            <div class="sticker-grid" id="selectedImagesPreview"></div>
+                            <button class="btn btn-primary" id="saveStickersBtn" style="display:none;margin-top:10px;font-size:14px;">💾 Kaydet</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODALLAR -->
+    <div class="modal" id="createRoomModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>🎬 Oda Oluştur</h2>
+                <button class="close-modal" onclick="app.hideModal('createRoomModal')">✕</button>
+            </div>
+            <p style="color:#8e8e8e;margin-bottom:15px;">Oda otomatik oluşturulacak.</p>
+            <p style="color:#0095F6;margin-bottom:20px;font-weight:600;">🔑 Oda Şifresi: <b>efkaza7634</b></p>
+            <div class="button-group">
+                <button class="btn btn-secondary" onclick="app.hideModal('createRoomModal')">İptal</button>
+                <button class="btn btn-primary" id="confirmCreateRoom">🚀 Oluştur</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal" id="joinRoomModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>🔑 Odaya Katıl</h2>
+                <button class="close-modal" onclick="app.hideModal('joinRoomModal')">✕</button>
+            </div>
+            <div class="form-group">
+                <label>Oda Şifresi</label>
+                <input type="text" id="joinPasswordInput" class="form-input" placeholder="Şifreyi girin" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-lpignore="true">
+            </div>
+            <div class="button-group">
+                <button class="btn btn-secondary" onclick="app.hideModal('joinRoomModal')">İptal</button>
+                <button class="btn btn-primary" id="confirmJoinRoom">🚪 Katıl</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal" id="userInfoModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>👤 Kullanıcı Bilgileri</h2>
+                <button class="close-modal" onclick="app.hideModal('userInfoModal')">✕</button>
+            </div>
+            <div class="form-group">
+                <label>Kullanıcı Adın</label>
+                <input type="text" id="userNameInput" class="form-input" placeholder="Adını gir" maxlength="20">
+            </div>
+            <div class="button-group">
+                <button class="btn btn-secondary" onclick="app.hideModal('userInfoModal')">İptal</button>
+                <button class="btn btn-primary" id="confirmUserInfo">✅ Devam</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal" id="youtubeModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>▶️ YouTube Linki</h2>
+                <button class="close-modal" onclick="app.hideModal('youtubeModal')">✕</button>
+            </div>
+            <div class="form-group">
+                <label>YouTube Video Linki</label>
+                <input type="text" id="youtubeLinkInput" class="form-input" placeholder="https://www.youtube.com/watch?v=...">
+            </div>
+            <div class="button-group">
+                <button class="btn btn-secondary" onclick="app.hideModal('youtubeModal')">İptal</button>
+                <button class="btn btn-primary" id="confirmYouTube">▶️ Paylaş</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- FULLSCREEN MODAL -->
+    <div class="fullscreen-modal" id="fullscreenImageModal">
+        <button class="close-fullscreen" onclick="app.hideFullscreenImage()">✕</button>
+        <img id="fullscreenImage" class="fullscreen-image" src="" alt="">
+        <div class="view-timer" id="securePhotoTimer" style="display:none;"></div>
+    </div>
+
+    <!-- RECORDING INDICATOR -->
+    <div id="recordingIndicator" style="display:none;">
+        <i>🎤</i>
+        <div id="recordingTimer">00:00</div>
+        <button class="btn" style="background:#fff;color:#000;padding:12px 30px;border-radius:50px;font-size:16px;" onclick="app.stopRecording()">⏹️ Durdur</button>
+    </div>
+
+    <input type="file" id="imageInput" style="display:none;" accept="image/*">
+    <input type="file" id="audioInput" style="display:none;" accept="audio/*">
+    <input type="file" id="videoFileInput" style="display:none;" accept="video/*">
+
+    <script>
+        // ============ BALON OYUNU ============
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        let gameActive = false;
+        let score = 0;
+        let highScore = parseInt(localStorage.getItem('balonHighScore') || '0');
+        let balloons = [];
+        let gameLoop;
+
+        document.getElementById('gameHighScore').textContent = highScore;
+
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+
+        class Balloon {
+            constructor() {
+                this.reset();
+            }
+            reset() {
+                this.x = Math.random() * canvas.width;
+                this.y = canvas.height + 80;
+                this.radius = 25 + Math.random() * 30;
+                this.speed = 1 + Math.random() * 3;
+                this.color = `hsl(${Math.random()*360},70%,60%)`;
+                this.popped = false;
+            }
+            update() {
+                if (this.popped) return;
+                this.y -= this.speed;
+                if (this.y < -80) this.reset();
+            }
+            draw() {
+                if (this.popped) return;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI*2);
+                ctx.fillStyle = this.color;
+                ctx.fill();
+                ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.arc(this.x-5, this.y-8, this.radius*0.15, 0, Math.PI*2);
+                ctx.fillStyle = 'rgba(255,255,255,0.4)';
+                ctx.fill();
+                ctx.beginPath();
+                ctx.moveTo(this.x, this.y+this.radius);
+                ctx.lineTo(this.x-3, this.y+this.radius+15);
+                ctx.lineTo(this.x+3, this.y+this.radius+15);
+                ctx.fillStyle = '#888';
+                ctx.fill();
+            }
+            contains(px, py) {
+                const dx = this.x - px;
+                const dy = this.y - py;
+                return Math.sqrt(dx*dx+dy*dy) < this.radius;
+            }
+        }
+
+        function initBalloons() {
+            balloons = [];
+            for (let i=0;i<12;i++) {
+                const b = new Balloon();
+                b.y = Math.random()*canvas.height;
+                balloons.push(b);
+            }
+        }
+
+        function drawGame() {
+            ctx.clearRect(0,0,canvas.width,canvas.height);
+            balloons.forEach(b=>{b.update();b.draw();});
+            if (gameActive) gameLoop = requestAnimationFrame(drawGame);
+        }
+
+        canvas.addEventListener('click',(e)=>{
+            if (!gameActive) return;
+            const rect = canvas.getBoundingClientRect();
+            const px = e.clientX - rect.left;
+            const py = e.clientY - rect.top;
+            for (let b of balloons) {
+                if (!b.popped && b.contains(px,py)) {
+                    b.popped = true;
+                    score++;
+                    document.getElementById('gameScore').textContent = score;
+                    setTimeout(()=>{b.reset();b.popped=false;},500);
+                    break;
+                }
+            }
+        });
+
+        document.getElementById('gameStartBtn').addEventListener('click',()=>{
+            if (gameActive) return;
+            gameActive = true;
+            score = 0;
+            document.getElementById('gameScore').textContent = '0';
+            initBalloons();
+            drawGame();
+        });
+
+        document.getElementById('gameRestartBtn').addEventListener('click',()=>{
+            cancelAnimationFrame(gameLoop);
+            gameActive = false;
+            if (score>highScore){highScore=score;localStorage.setItem('balonHighScore',highScore);document.getElementById('gameHighScore').textContent=highScore;}
+            score=0;
+            document.getElementById('gameScore').textContent='0';
+            initBalloons();
+            drawGameFrame();
+        });
+
+        function drawGameFrame(){
+            ctx.clearRect(0,0,canvas.width,canvas.height);
+            balloons.forEach(b=>{b.update();b.draw();});
+            if(!gameActive)requestAnimationFrame(drawGameFrame);
+        }
+        initBalloons();
+        drawGameFrame();
+
+        // ============ GİZLİ GEÇİŞ ============
+        const SECRET_PASSWORD = 'efkaza7634';
+        const SERVER_URL = 'https://sizinkekimki.onrender.com';
+
+        document.getElementById('secretSearchBtn').addEventListener('click',()=>{
+            document.getElementById('passwordOverlay').classList.add('active');
+            document.getElementById('passwordInput').focus();
+            document.getElementById('passwordError').style.display='none';
+            document.getElementById('passwordInput').value='';
+        });
+
+        document.getElementById('passwordSubmitBtn').addEventListener('click',checkPassword);
+        document.getElementById('passwordInput').addEventListener('keypress',(e)=>{
+            if(e.key==='Enter')checkPassword();
+        });
+
+        function checkPassword(){
+            const input = document.getElementById('passwordInput').value.trim();
+            if(input===SECRET_PASSWORD){
+                document.getElementById('passwordOverlay').classList.remove('active');
+                document.getElementById('privacyScreen').style.display='none';
+                document.getElementById('appScreen').classList.add('active');
+                cancelAnimationFrame(gameLoop);
+                gameActive=false;
+                if(!app.userName){
+                    app.showModal('userInfoModal');
+                }
+            }else{
+                document.getElementById('passwordError').style.display='block';
+                document.getElementById('passwordInput').value='';
+                document.getElementById('passwordInput').focus();
+            }
+        }
+
+        document.addEventListener('visibilitychange',()=>{
+            if(document.hidden && document.getElementById('appScreen').classList.contains('active')){
+                document.getElementById('appScreen').classList.remove('active');
+                document.getElementById('privacyScreen').style.display='flex';
+                document.getElementById('passwordOverlay').classList.remove('active');
+                document.getElementById('passwordInput').value='';
+                document.getElementById('passwordError').style.display='none';
+                initBalloons();
+                gameActive=false;
+                drawGameFrame();
+            }
+        });
+
+        // ============ ANA UYGULAMA ============
+        class App {
+            constructor(){
+                this.socket=null;
+                this.userName=localStorage.getItem('userName')||'';
+                this.userPhoto=localStorage.getItem('userPhoto')||'';
+                this.roomCode=null;
+                this.roomName=null;
+                this.isOwner=false;
+                this.deviceId=localStorage.getItem('deviceId')||this.generateId();
+                this.youtubePlayer=null;
+                this.selectedStickers=[];
+                this.pendingPhotoType='normal';
+                this.mediaRecorder=null;
+                this.audioChunks=[];
+                this.currentReplyTo=null;
+                this.securePhotoTimer=null;
+                this.initEvents();
+            }
+
+            generateId(){
+                const id='user_'+Math.random().toString(36).substr(2,9)+'_'+Date.now();
+                localStorage.setItem('deviceId',id);
+                return id;
+            }
+
+            createDefaultAvatar(name){
+                return 'https://ui-avatars.com/api/?name='+encodeURIComponent(name||'K')+'&background=0095F6&color=fff&length=1&bold=true&size=128';
+            }
+
+            escapeHtml(text){
+                if(!text)return'';
+                const d=document.createElement('div');
+                d.textContent=text;
+                return d.innerHTML;
+            }
+
+            showModal(id){
+                document.querySelectorAll('.modal').forEach(m=>m.classList.remove('active'));
+                document.getElementById(id).classList.add('active');
+            }
+
+            hideModal(id){
+                document.getElementById(id).classList.remove('active');
+            }
+
+            connectSocket(){
+                if(this.socket&&this.socket.connected)return;
+                this.socket=io(SERVER_URL,{
+                    transports:['websocket','polling'],
+                    reconnectionAttempts:10,
+                    reconnectionDelay:2000,
+                    timeout:60000
+                });
+                this.setupSocketEvents();
+            }
+
+            setupSocketEvents(){
+                this.socket.on('connect',()=>{
+                    this.socket.emit('register-device',{
+                        deviceId:this.deviceId,
+                        macAddress:'9c:28:f7:8d:c1:ed',
+                        userName:this.userName,
+                        userPhoto:this.userPhoto||this.createDefaultAvatar(this.userName)
+                    });
+                    if(this.pendingCreate){
+                        this.socket.emit('create-room',{
+                            userName:this.userName,
+                            userPhoto:this.userPhoto,
+                            deviceId:this.deviceId,
+                            macAddress:'9c:28:f7:8d:c1:ed',
+                            roomName:'Oda',
+                            password:'efkaza7634'
+                        });
+                        this.pendingCreate=false;
+                    }
+                    if(this.pendingJoin){
+                        this.socket.emit('join-room',{
+                            roomCode:this.pendingJoinCode,
+                            userName:this.userName,
+                            userPhoto:this.userPhoto,
+                            deviceId:this.deviceId,
+                            macAddress:'9c:28:f7:8d:c1:ed',
+                            password:this.pendingJoinPassword
+                        });
+                        this.pendingJoin=false;
+                    }
+                });
+
+                this.socket.on('room-created',(data)=>{
+                    this.roomCode=data.roomCode;
+                    this.roomName=data.roomName;
+                    this.isOwner=true;
+                    document.getElementById('roomNameDisplay').textContent=this.roomName||'Oda';
+                    document.getElementById('roomCodeDisplay').textContent='efkaza7634';
+                    document.getElementById('videoControls').style.display='flex';
+                    this.hideModal('createRoomModal');
+                    this.addSystemMessage('✅ Oda kuruldu! Şifre: efkaza7634');
+                });
+
+                this.socket.on('room-joined',(data)=>{
+                    this.roomCode=data.roomCode;
+                    this.roomName=data.roomName;
+                    this.isOwner=data.isOwner;
+                    document.getElementById('roomNameDisplay').textContent=this.roomName||'Oda';
+                    document.getElementById('roomCodeDisplay').textContent='efkaza7634';
+                    if(this.isOwner)document.getElementById('videoControls').style.display='flex';
+                    this.hideModal('joinRoomModal');
+                    if(data.previousMessages){
+                        document.getElementById('messagesContainer').innerHTML='';
+                        data.previousMessages.forEach(m=>this.displayMessage(m));
+                    }
+                    if(data.activeVideo){
+                        if(data.activeVideo.type==='youtube'){
+                            this.displayYouTubeVideo(data.activeVideo.videoId,data.activeVideo.title);
+                        }else{
+                            this.displayVideo(data.activeVideo.url);
+                        }
+                    }
+                    if(data.stickers){
+                        this.displayStickers(data.stickers);
+                    }
+                });
+
+                this.socket.on('message',(msg)=>{
+                    this.displayMessage(msg);
+                    setTimeout(()=>{
+                        const mc=document.getElementById('messagesContainer');
+                        mc.scrollTop=mc.scrollHeight;
+                    },50);
+                });
+
+                this.socket.on('message-deleted',(data)=>{
+                    const el=document.querySelector(`[data-message-id="${data.messageId}"]`);
+                    if(el)el.remove();
+                });
+
+                this.socket.on('reaction-added',(data)=>{
+                    this.updateMessageReaction(data.messageId,data.reaction,data.userId,data.userName);
+                });
+
+                this.socket.on('user-list-update',(users)=>{
+                    document.getElementById('onlineCount').innerHTML='<i class="bi bi-person-fill"></i> '+users.length+' kişi';
+                });
+
+                this.socket.on('user-joined',(data)=>{
+                    this.addSystemMessage('👋 '+this.escapeHtml(data.userName)+' katıldı');
+                });
+
+                this.socket.on('user-left',(data)=>{
+                    this.addSystemMessage('🚪 '+this.escapeHtml(data.userName)+' ayrıldı');
+                });
+
+                this.socket.on('video-uploaded',(data)=>{
+                    this.displayVideo(data.videoUrl);
+                    this.addSystemMessage('🎬 Video yüklendi: '+this.escapeHtml(data.title||''));
+                });
+
+                this.socket.on('youtube-video-shared',(data)=>{
+                    this.displayYouTubeVideo(data.videoId,data.title);
+                    this.addSystemMessage('▶️ YouTube: '+this.escapeHtml(data.title||''));
+                });
+
+                this.socket.on('video-deleted',()=>{
+                    this.hideVideo();
+                    this.addSystemMessage('🗑️ Video kapatıldı');
+                });
+
+                this.socket.on('video-control',(data)=>{
+                    if(!this.isOwner)this.syncVideoState(data);
+                });
+
+                this.socket.on('secure-photo-view',(data)=>{
+                    this.showSecurePhoto(data);
+                });
+
+                this.socket.on('stickers-updated',(data)=>{
+                    this.displayStickers(data.stickers);
+                });
+
+                this.socket.on('emergency-message',()=>{
+                    this.resetToPrivacy();
+                });
+
+                this.socket.on('error',(data)=>{
+                    alert('❌ '+data.message);
+                });
+
+                this.socket.on('disconnect',()=>{
+                    this.addSystemMessage('🔌 Bağlantı koptu, yeniden bağlanılıyor...');
+                });
+
+                this.socket.on('reconnect',()=>{
+                    this.addSystemMessage('✅ Yeniden bağlanıldı');
+                });
+            }
+
+            resetToPrivacy(){
+                document.getElementById('appScreen').classList.remove('active');
+                document.getElementById('privacyScreen').style.display='flex';
+                document.getElementById('passwordOverlay').classList.remove('active');
+                document.getElementById('passwordInput').value='';
+                document.getElementById('passwordError').style.display='none';
+                document.getElementById('messagesContainer').innerHTML='';
+                initBalloons();
+                gameActive=false;
+                drawGameFrame();
+                if(this.socket){this.socket.disconnect();this.socket=null;}
+                this.roomCode=null;
+                this.isOwner=false;
+                clearInterval(this.securePhotoTimer);
+            }
+
+            initEvents(){
+                document.getElementById('confirmCreateRoom').addEventListener('click',()=>this.createRoom());
+                document.getElementById('confirmJoinRoom').addEventListener('click',()=>this.joinRoom());
+                document.getElementById('confirmUserInfo').addEventListener('click',()=>this.saveUserInfo());
+                document.getElementById('confirmYouTube').addEventListener('click',()=>this.shareYouTube());
+                document.getElementById('sendButton').addEventListener('click',()=>this.sendMessage());
+                document.getElementById('messageInput').addEventListener('keypress',(e)=>{
+                    if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();this.sendMessage();}
+                });
+                document.getElementById('stickerBtn').addEventListener('click',()=>{
+                    const p=document.getElementById('stickerPanel');
+                    p.style.display=p.style.display==='none'?'block':'none';
+                });
+                document.getElementById('photoBtn').addEventListener('click',()=>this.showPhotoOptions());
+                document.getElementById('micBtn').addEventListener('click',()=>this.startRecording());
+                document.getElementById('imageInput').addEventListener('change',(e)=>this.handleFileUpload(e,'image'));
+                document.getElementById('audioInput').addEventListener('change',(e)=>this.handleFileUpload(e,'audio'));
+                document.getElementById('videoFileInput').addEventListener('change',(e)=>{
+                    if(e.target.files[0])this.uploadVideo(e.target.files[0]);
+                });
+                document.getElementById('createStickerBtn').addEventListener('click',()=>{
+                    document.getElementById('createStickerPanel').style.display='block';
+                });
+                document.getElementById('stickerImageInput').addEventListener('change',(e)=>this.handleStickerImages(e));
+                document.getElementById('saveStickersBtn').addEventListener('click',()=>this.saveStickers());
+            }
+
+            saveUserInfo(){
+                const name=document.getElementById('userNameInput').value.trim();
+                if(!name){alert('Adını gir!');return;}
+                this.userName=name;
+                localStorage.setItem('userName',name);
+                this.userPhoto=this.createDefaultAvatar(name);
+                localStorage.setItem('userPhoto',this.userPhoto);
+                this.hideModal('userInfoModal');
+            }
+
+            createRoom(){
+                if(!this.userName){this.showModal('userInfoModal');return;}
+                this.pendingCreate=true;
+                this.connectSocket();
+            }
+
+            joinRoom(){
+                if(!this.userName){this.showModal('userInfoModal');return;}
+                const password=document.getElementById('joinPasswordInput').value.trim();
+                if(!password){alert('Şifreyi gir!');return;}
+                if(password!=='efkaza7634'){alert('Şifre yanlış!');return;}
+                this.pendingJoin=true;
+                this.pendingJoinPassword=password;
+                this.pendingJoinCode='EFKAZA';
+                this.connectSocket();
+            }
+
+            showYouTubeInput(){
+                this.showModal('youtubeModal');
+                document.getElementById('youtubeLinkInput').focus();
+            }
+
+            shareYouTube(){
+                const link=document.getElementById('youtubeLinkInput').value.trim();
+                if(!link){alert('YouTube linki gir!');return;}
+                const videoId=this.extractYouTubeId(link);
+                if(!videoId){alert('Geçerli YouTube linki değil!');return;}
+                if(!this.isOwner){alert('Sadece oda sahibi!');return;}
+                this.socket.emit('share-youtube-link',{youtubeUrl:link,title:'YouTube Video'});
+                this.hideModal('youtubeModal');
+                document.getElementById('youtubeLinkInput').value='';
+            }
+
+            extractYouTubeId(url){
+                const regex=/(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/;
+                const match=url.match(regex);
+                return match?match[1]:null;
+            }
+
+            sendMessage(){
+                const text=document.getElementById('messageInput').value.trim();
+                if(!text||!this.socket)return;
+                if(text==='🚨'){
+                    if(confirm('🚨 Acil durum! Herkes oyuna dönecek ve mesajlar silinecek. Emin misin?')){
+                        this.socket.emit('emergency-alert');
+                        this.socket.emit('message',{text:'🚨',type:'emergency'});
+                        setTimeout(()=>this.resetToPrivacy(),500);
+                    }
+                    document.getElementById('messageInput').value='';
+                    return;
+                }
+                if(this.currentReplyTo){
+                    this.socket.emit('reply-message',{
+                        replyToId:this.currentReplyTo.id,
+                        text:text,
+                        type:'text'
+                    });
+                    this.currentReplyTo=null;
+                    document.getElementById('messageInput').placeholder='Mesaj yaz...';
+                }else{
+                    this.socket.emit('message',{text:text,type:'text'});
+                }
+                document.getElementById('messageInput').value='';
+                document.getElementById('messageInput').style.height='auto';
+            }
+
+            displayMessage(msg){
+                const isOwn=msg.userName===this.userName;
+                const el=document.createElement('div');
+                el.className='message'+(isOwn?' own':'');
+                el.setAttribute('data-message-id',msg.id);
+                const avatar=msg.userPhoto&&msg.userPhoto.startsWith('data:')?msg.userPhoto:this.createDefaultAvatar(msg.userName);
+                let content='';
+
+                if(msg.replyTo){
+                    const repliedMsg=this.findMessageById(msg.replyTo);
+                    if(repliedMsg){
+                        content+=`<div class="reply-indicator">↩ ${this.escapeHtml(repliedMsg.userName)}: ${this.escapeHtml((repliedMsg.text||'Medya').substring(0,30))}</div>`;
+                    }
+                }
+
+                if(msg.type==='emergency'){
+                    content+='<div class="message-text">🚨 ACİL DURUM 🚨</div>';
+                }else if(msg.type==='sticker'){
+                    content+='<img src="'+msg.stickerUrl+'" class="message-sticker" onclick="app.showFullscreenImage(\''+msg.stickerUrl+'\')">';
+                }else if(msg.type==='image'){
+                    if(msg.isSecure){
+                        content+='<button class="btn btn-danger" style="padding:8px 15px;font-size:13px;width:auto;" onclick="app.viewSecurePhoto(\''+msg.id+'\',\''+(msg.secureId||'')+'\')">🔒 Tek Kullanımlık Fotoğraf (8sn)</button>';
+                    }else{
+                        content+='<img src="'+msg.fileUrl+'" class="message-image" onclick="app.showFullscreenImage(\''+msg.fileUrl+'\')" loading="lazy">';
+                    }
+                }else if(msg.type==='audio'){
+                    content+='<audio controls style="width:100%;margin-top:8px;border-radius:30px;" controlsList="nodownload"><source src="'+msg.fileUrl+'"></audio>';
+                }else{
+                    content+='<span class="message-text">'+this.escapeHtml(msg.text)+'</span>';
+                }
+
+                if(msg.reactions&&msg.reactions.length>0){
+                    const reactionCounts={};
+                    msg.reactions.forEach(r=>reactionCounts[r.emoji]=(reactionCounts[r.emoji]||0)+1);
+                    let reactionsHtml='<div class="message-reactions">';
+                    for(const[emoji,count]of Object.entries(reactionCounts)){
+                        reactionsHtml+=`<span class="reaction-badge">${emoji} ${count}</span>`;
+                    }
+                    reactionsHtml+='</div>';
+                    content+=reactionsHtml;
+                }
+
+                el.innerHTML=`
+                    <img src="${avatar}" class="message-avatar" onerror="this.src='${this.createDefaultAvatar(msg.userName)}'">
+                    <div class="message-content">
+                        <div class="message-sender">${!isOwn?this.escapeHtml(msg.userName):''}</div>
+                        ${content}
+                        <div class="message-time">${msg.time||''}</div>
+                    </div>`;
+                this.addMessageLongPress(el,msg);
+                document.getElementById('messagesContainer').appendChild(el);
+            }
+
+            findMessageById(id){
+                const messages=document.querySelectorAll('.message');
+                for(let msg of messages){
+                    if(msg.dataset.messageId===id){
+                        const textEl=msg.querySelector('.message-text');
+                        const senderEl=msg.querySelector('.message-sender');
+                        return{id,userName:senderEl?.textContent||'',text:textEl?.textContent||'Medya'};
+                    }
+                }
+                return null;
+            }
+
+            addMessageLongPress(element,msg){
+                let pressTimer;
+                const start=(e)=>{
+                    e.preventDefault();
+                    pressTimer=setTimeout(()=>this.showMessageActions(e,element,msg),500);
+                };
+                const end=()=>clearTimeout(pressTimer);
+                element.addEventListener('touchstart',start,{passive:false});
+                element.addEventListener('touchend',end);
+                element.addEventListener('touchmove',end);
+                element.addEventListener('touchcancel',end);
+                element.addEventListener('mousedown',start);
+                element.addEventListener('mouseup',end);
+                element.addEventListener('mouseleave',end);
+            }
+
+            showMessageActions(event,element,msg){
+                document.querySelectorAll('.reaction-menu, .message-actions').forEach(el=>el.remove());
+                const rect=element.getBoundingClientRect();
+                const reactionMenu=document.createElement('div');
+                reactionMenu.className='reaction-menu';
+                reactionMenu.style.top=Math.max(10,rect.top-70)+'px';
+                reactionMenu.style.left=(rect.left+rect.width/2)+'px';
+                const reactions=['❤️','💋','🖕','😘','💞','👍','👎','😂','😮','😢'];
+                reactions.forEach(emoji=>{
+                    const btn=document.createElement('span');
+                    btn.className='reaction-emoji';
+                    btn.textContent=emoji;
+                    btn.onclick=()=>{
+                        this.addReaction(msg.id,emoji);
+                        reactionMenu.remove();
+                        actionMenu?.remove();
+                    };
+                    reactionMenu.appendChild(btn);
+                });
+                document.body.appendChild(reactionMenu);
+                const actionMenu=document.createElement('div');
+                actionMenu.className='message-actions';
+                actionMenu.style.top=Math.min(rect.top,window.innerHeight-180)+'px';
+                actionMenu.style.left=Math.min(rect.right+10,window.innerWidth-180)+'px';
+                const replyItem=document.createElement('div');
+                replyItem.className='action-item';
+                replyItem.innerHTML='↩ Yanıtla';
+                replyItem.onclick=()=>{
+                    this.currentReplyTo=msg;
+                    document.getElementById('messageInput').focus();
+                    document.getElementById('messageInput').placeholder=this.escapeHtml(msg.userName)+'e yanıt ver...';
+                    reactionMenu.remove();
+                    actionMenu.remove();
+                };
+                actionMenu.appendChild(replyItem);
+                if(msg.userName===this.userName){
+                    const deleteItem=document.createElement('div');
+                    deleteItem.className='action-item delete';
+                    deleteItem.innerHTML='🗑️ Sil';
+                    deleteItem.onclick=()=>{
+                        if(confirm('Bu mesajı silmek istediğine emin misin?')){
+                            this.deleteMessage(msg.id);
+                        }
+                        reactionMenu.remove();
+                        actionMenu.remove();
+                    };
+                    actionMenu.appendChild(deleteItem);
+                }
+                document.body.appendChild(actionMenu);
+                setTimeout(()=>{
+                    const closeMenus=(e)=>{
+                        if(!e.target.closest('.reaction-menu')&&!e.target.closest('.message-actions')){
+                            document.querySelectorAll('.reaction-menu, .message-actions').forEach(el=>el.remove());
+                            document.removeEventListener('click',closeMenus);
+                        }
+                    };
+                    document.addEventListener('click',closeMenus);
+                },100);
+            }
+
+            addReaction(messageId,emoji){
+                if(!this.socket)return;
+                this.socket.emit('add-reaction',{messageId,reaction:emoji});
+            }
+
+            updateMessageReaction(messageId,reaction,userId,userName){
+                const el=document.querySelector(`[data-message-id="${messageId}"]`);
+                if(!el)return;
+                const content=el.querySelector('.message-content');
+                let reactionsContainer=content.querySelector('.message-reactions');
+                if(!reactionsContainer){
+                    reactionsContainer=document.createElement('div');
+                    reactionsContainer.className='message-reactions';
+                    reactionsContainer.innerHTML=`<span class="reaction-badge">${reaction} 1</span>`;
+                    content.appendChild(reactionsContainer);
+                }else{
+                    const existing=Array.from(reactionsContainer.children).find(b=>b.textContent.includes(reaction));
+                    if(existing){
+                        const count=parseInt(existing.textContent.split(' ')[1])+1;
+                        existing.textContent=`${reaction} ${count}`;
+                    }else{
+                        const newBadge=document.createElement('span');
+                        newBadge.className='reaction-badge';
+                        newBadge.textContent=`${reaction} 1`;
+                        reactionsContainer.appendChild(newBadge);
+                    }
+                }
+            }
+
+            deleteMessage(messageId){
+                if(!this.socket)return;
+                this.socket.emit('delete-message',{messageId});
+            }
+
+            addSystemMessage(text){
+                const el=document.createElement('div');
+                el.className='system-message';
+                el.innerHTML=text;
+                document.getElementById('messagesContainer').appendChild(el);
+                document.getElementById('messagesContainer').scrollTop=document.getElementById('messagesContainer').scrollHeight;
+            }
+
+            displayVideo(url){
+                document.getElementById('noVideo').style.display='none';
+                document.getElementById('videoPlayer').style.display='block';
+                document.getElementById('youtubeContainer').style.display='none';
+                document.getElementById('videoPlayer').src=url;
+                document.getElementById('videoPlayer').play().catch(()=>{});
+                if(this.youtubePlayer){this.youtubePlayer.destroy();this.youtubePlayer=null;}
+            }
+
+            displayYouTubeVideo(videoId,title){
+                document.getElementById('noVideo').style.display='none';
+                document.getElementById('videoPlayer').style.display='none';
+                document.getElementById('youtubeContainer').style.display='block';
+                document.getElementById('youtubeContainer').innerHTML='<div id="youtubePlayer"></div>';
+                if(this.youtubePlayer)this.youtubePlayer.destroy();
+                if(typeof YT!=='undefined'&&YT.Player){
+                    this.createYouTubePlayer(videoId);
+                }else{
+                    window.onYouTubeIframeAPIReady=()=>this.createYouTubePlayer(videoId);
+                    if(!document.querySelector('script[src="https://www.youtube.com/iframe_api"]')){
+                        const tag=document.createElement('script');
+                        tag.src='https://www.youtube.com/iframe_api';
+                        document.head.appendChild(tag);
+                    }
+                }
+            }
+
+            createYouTubePlayer(videoId){
+                this.youtubePlayer=new YT.Player('youtubePlayer',{
+                    height:'100%',width:'100%',videoId:videoId,
+                    playerVars:{'playsinline':1,'enablejsapi':1,'modestbranding':1,'rel':0},
+                    events:{
+                        'onReady':()=>{if(this.isOwner)document.getElementById('videoControls').style.display='flex';},
+                        'onStateChange':(event)=>{
+                            if(this.isOwner){
+                                if(event.data===YT.PlayerState.PLAYING){
+                                    document.getElementById('playPauseBtn').textContent='⏸️';
+                                }else if(event.data===YT.PlayerState.PAUSED){
+                                    document.getElementById('playPauseBtn').textContent='▶️';
+                                }
+                                this.sendVideoControl();
+                            }
+                        }
+                    }
+                });
+            }
+
+            hideVideo(){
+                document.getElementById('noVideo').style.display='block';
+                document.getElementById('videoPlayer').style.display='none';
+                document.getElementById('youtubeContainer').style.display='none';
+                document.getElementById('videoPlayer').src='';
+                if(this.youtubePlayer){this.youtubePlayer.destroy();this.youtubePlayer=null;}
+            }
+
+            togglePlay(){
+                if(this.youtubePlayer){
+                    const s=this.youtubePlayer.getPlayerState();
+                    s===YT.PlayerState.PLAYING?this.youtubePlayer.pauseVideo():this.youtubePlayer.playVideo();
+                }else{
+                    const v=document.getElementById('videoPlayer');
+                    v.paused?v.play():v.pause();
+                }
+                this.sendVideoControl();
+            }
+
+            seek(s){
+                if(this.youtubePlayer){
+                    this.youtubePlayer.seekTo(this.youtubePlayer.getCurrentTime()+s,true);
+                }else{
+                    document.getElementById('videoPlayer').currentTime+=s;
+                }
+                this.sendVideoControl();
+            }
+
+            changePlaybackRate(r){
+                if(this.youtubePlayer)this.youtubePlayer.setPlaybackRate(parseFloat(r));
+                else document.getElementById('videoPlayer').playbackRate=parseFloat(r);
+                this.sendVideoControl();
+            }
+
+            sendVideoControl(){
+                if(!this.isOwner||!this.socket)return;
+                let state={};
+                if(this.youtubePlayer){
+                    state={type:'youtube',playing:this.youtubePlayer.getPlayerState()===YT.PlayerState.PLAYING,
+                        currentTime:this.youtubePlayer.getCurrentTime(),playbackRate:this.youtubePlayer.getPlaybackRate()};
+                }else{
+                    const v=document.getElementById('videoPlayer');
+                    if(v.src)state={type:'video',playing:!v.paused,currentTime:v.currentTime,playbackRate:v.playbackRate};
+                }
+                this.socket.emit('video-control',state);
+            }
+
+            syncVideoState(state){
+                if(state.type==='youtube'&&this.youtubePlayer){
+                    if(state.playing!==undefined){
+                        const isPlaying=this.youtubePlayer.getPlayerState()===YT.PlayerState.PLAYING;
+                        if(state.playing&&!isPlaying)this.youtubePlayer.playVideo();
+                        else if(!state.playing&&isPlaying)this.youtubePlayer.pauseVideo();
+                    }
+                    if(state.currentTime!==undefined&&Math.abs(this.youtubePlayer.getCurrentTime()-state.currentTime)>2){
+                        this.youtubePlayer.seekTo(state.currentTime,true);
+                    }
+                }else if(state.type==='video'){
+                    const v=document.getElementById('videoPlayer');
+                    if(v.src){
+                        if(state.playing!==undefined){
+                            state.playing?v.play():v.pause();
+                        }
+                        if(state.currentTime!==undefined&&Math.abs(v.currentTime-state.currentTime)>2){
+                            v.currentTime=state.currentTime;
+                        }
+                        if(state.playbackRate!==undefined)v.playbackRate=state.playbackRate;
+                    }
+                }
+            }
+
+            deleteVideo(){
+                if(!this.isOwner||!this.socket)return;
+                if(confirm('Videoyu kapat?')){
+                    this.socket.emit('delete-video');
+                    this.hideVideo();
+                }
+            }
+
+            async uploadVideo(file){
+                if(!file||!this.isOwner)return;
+                if(file.size>5*1024*1024*1024){alert('5GB altı olmalı!');return;}
+                const reader=new FileReader();
+                reader.onload=(e)=>{
+                    this.socket.emit('upload-room-video',{
+                        url:e.target.result,fileId:'room_'+Date.now(),title:file.name,fileSize:file.size
+                    });
+                };
+                reader.readAsDataURL(file);
+            }
+
+            showPhotoOptions(){
+                const modal=document.createElement('div');
+                modal.className='modal active';
+                modal.innerHTML=`
+                    <div class="modal-content">
+                        <h2>📷 Fotoğraf Gönder</h2>
+                        <div class="photo-options">
+                            <button class="photo-option-btn secure-photo-btn" id="securePhotoOption"><i>🔒</i> <span>Tek Kullanımlık</span> <small>8 saniye</small></button>
+                            <button class="photo-option-btn normal-photo-btn" id="normalPhotoOption"><i>🖼️</i> <span>Normal</span> <small>Kalıcı</small></button>
+                        </div>
+                        <div class="button-group">
+                            <button class="btn btn-secondary" onclick="this.closest('.modal').remove()">İptal</button>
+                        </div>
+                    </div>`;
+                document.body.appendChild(modal);
+                document.getElementById('securePhotoOption').onclick=()=>{
+                    modal.remove();
+                    this.pendingPhotoType='secure';
+                    document.getElementById('imageInput').click();
+                };
+                document.getElementById('normalPhotoOption').onclick=()=>{
+                    modal.remove();
+                    this.pendingPhotoType='normal';
+                    document.getElementById('imageInput').click();
+                };
+            }
+
+            handleFileUpload(event,type){
+                const file=event.target.files[0];
+                if(!file)return;
+                if(file.size>50*1024*1024){alert('50MB altı olmalı!');return;}
+                const reader=new FileReader();
+                reader.onload=(e)=>{
+                    const fileData={
+                        fileUrl:e.target.result,
+                        fileName:file.name,
+                        fileSize:file.size,
+                        type:type,
+                        isSecure:(type==='image'&&this.pendingPhotoType==='secure'),
+                        secureId:(type==='image'&&this.pendingPhotoType==='secure')?'secure_'+Date.now()+'_'+Math.random().toString(36).substr(2,5):null
+                    };
+                    if(this.currentReplyTo){
+                        this.socket.emit('reply-message',{replyToId:this.currentReplyTo.id,...fileData});
+                        this.currentReplyTo=null;
+                        document.getElementById('messageInput').placeholder='Mesaj yaz...';
+                    }else{
+                        this.socket.emit('message',fileData);
+                    }
+                };
+                reader.readAsDataURL(file);
+                event.target.value='';
+                this.pendingPhotoType='normal';
+            }
+
+            viewSecurePhoto(messageId,secureId){
+                if(!this.socket){alert('Bağlantı yok!');return;}
+                this.socket.emit('view-secure-photo',{secureId});
+            }
+
+            showSecurePhoto(data){
+                document.getElementById('fullscreenImage').src=data.imageUrl;
+                document.getElementById('fullscreenImageModal').classList.add('active');
+                const timer=document.getElementById('securePhotoTimer');
+                timer.style.display='block';
+                let seconds=8;
+                timer.textContent='🔒 '+seconds+' saniye';
+                clearInterval(this.securePhotoTimer);
+                this.securePhotoTimer=setInterval(()=>{
+                    seconds--;
+                    timer.textContent='🔒 '+seconds+' saniye';
+                    if(seconds<=0){
+                        clearInterval(this.securePhotoTimer);
+                        this.hideFullscreenImage();
+                    }
+                },1000);
+            }
+
+            showFullscreenImage(url){
+                document.getElementById('fullscreenImage').src=url;
+                document.getElementById('fullscreenImageModal').classList.add('active');
+                document.getElementById('securePhotoTimer').style.display='none';
+                clearInterval(this.securePhotoTimer);
+            }
+
+            hideFullscreenImage(){
+                document.getElementById('fullscreenImageModal').classList.remove('active');
+                document.getElementById('fullscreenImage').src='';
+                document.getElementById('securePhotoTimer').style.display='none';
+                clearInterval(this.securePhotoTimer);
+            }
+
+            handleStickerImages(event){
+                const files=Array.from(event.target.files);
+                if(!files.length)return;
+                this.selectedStickers=[];
+                document.getElementById('selectedImagesPreview').innerHTML='';
+                files.slice(0,9).forEach(f=>{
+                    const reader=new FileReader();
+                    reader.onload=(e)=>{
+                        this.selectedStickers.push(e.target.result);
+                        const img=document.createElement('img');
+                        img.src=e.target.result;
+                        img.className='sticker-item';
+                        img.onclick=()=>this.sendSticker({imageUrl:e.target.result});
+                        document.getElementById('selectedImagesPreview').appendChild(img);
+                        document.getElementById('saveStickersBtn').style.display='block';
+                    };
+                    reader.readAsDataURL(f);
+                });
+            }
+
+            saveStickers(){
+                if(!this.selectedStickers.length||!this.socket)return;
+                const stickers=this.selectedStickers.map(url=>({imageUrl:url}));
+                this.socket.emit('save-stickers',{stickers});
+                document.getElementById('createStickerPanel').style.display='none';
+                document.getElementById('stickerPanel').style.display='none';
+                this.selectedStickers=[];
+                document.getElementById('selectedImagesPreview').innerHTML='';
+                document.getElementById('saveStickersBtn').style.display='none';
+                document.getElementById('stickerImageInput').value='';
+            }
+
+            displayStickers(stickers){
+                document.getElementById('myStickers').innerHTML='';
+                if(!stickers||stickers.length===0){
+                    document.getElementById('myStickers').innerHTML='<div style="text-align:center;padding:20px;color:#8e8e8e;">Henüz çıkartma yok</div>';
+                    return;
+                }
+                stickers.forEach(sticker=>{
+                    const img=document.createElement('img');
+                    img.src=sticker.imageUrl;
+                    img.className='sticker-item';
+                    img.onclick=()=>this.sendSticker(sticker);
+                    document.getElementById('myStickers').appendChild(img);
+                });
+            }
+
+            sendSticker(sticker){
+                if(!this.socket)return;
+                this.socket.emit('send-sticker',{stickerId:sticker.id,imageUrl:sticker.imageUrl});
+                document.getElementById('stickerPanel').style.display='none';
+            }
+
+            async startRecording(){
+                try{
+                    const stream=await navigator.mediaDevices.getUserMedia({audio:true});
+                    this.mediaRecorder=new MediaRecorder(stream);
+                    this.audioChunks=[];
+                    this.mediaRecorder.ondataavailable=(e)=>this.audioChunks.push(e.data);
+                    this.mediaRecorder.onstop=()=>{
+                        const blob=new Blob(this.audioChunks,{type:'audio/webm'});
+                        const reader=new FileReader();
+                        reader.onload=(e)=>{
+                            const audioData={
+                                fileUrl:e.target.result,
+                                fileName:'kayit-'+Date.now()+'.webm',
+                                fileSize:blob.size,
+                                type:'audio'
+                            };
+                            if(this.currentReplyTo){
+                                this.socket.emit('reply-message',{replyToId:this.currentReplyTo.id,...audioData});
+                                this.currentReplyTo=null;
+                                document.getElementById('messageInput').placeholder='Mesaj yaz...';
+                            }else{
+                                this.socket.emit('message',audioData);
+                            }
+                        };
+                        reader.readAsDataURL(blob);
+                        stream.getTracks().forEach(t=>t.stop());
+                        document.getElementById('recordingIndicator').style.display='none';
+                    };
+                    this.mediaRecorder.start();
+                    document.getElementById('recordingIndicator').style.display='block';
+                    let seconds=0;
+                    this.recordingTimer=setInterval(()=>{
+                        seconds++;
+                        const mins=Math.floor(seconds/60);
+                        const secs=seconds%60;
+                        document.getElementById('recordingTimer').textContent=mins.toString().padStart(2,'0')+':'+secs.toString().padStart(2,'0');
+                    },1000);
+                }catch(e){alert('Mikrofon erişimi yok!');}
+            }
+
+            stopRecording(){
+                if(this.mediaRecorder&&this.mediaRecorder.state==='recording'){
+                    clearInterval(this.recordingTimer);
+                    this.mediaRecorder.stop();
+                }
+            }
+        }
+
+        const app=new App();
+    </script>
+</body>
+</html>
