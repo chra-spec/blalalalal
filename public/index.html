@@ -2,7 +2,7 @@
 <html lang="tr">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes, viewport-fit=cover">
     <title>Balon Patlatmaca</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
@@ -246,6 +246,7 @@
             display: flex;
             gap: 8px;
             align-items: center;
+            flex-wrap: wrap;
         }
         .action-btn {
             background: rgba(255,255,255,0.15);
@@ -256,6 +257,7 @@
             border-radius: 50%;
             font-size: 20px;
             cursor: pointer;
+            flex-shrink: 0;
         }
         .action-btn:active { transform: scale(0.95); }
         .message-input {
@@ -267,6 +269,7 @@
             color: white;
             font-size: 14px;
             outline: none;
+            min-width: 120px;
         }
         .send-btn {
             background: #ff6b6b;
@@ -277,6 +280,7 @@
             border-radius: 50%;
             font-size: 18px;
             cursor: pointer;
+            flex-shrink: 0;
         }
         .sticker-panel {
             margin-top: 10px;
@@ -341,9 +345,16 @@
             font-weight: bold;
         }
         @keyframes fadeIn { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:translateY(0); } }
-        @media (max-width:600px){
+        
+        /* Responsive - mobil için iyileştirmeler */
+        @media (max-width: 600px) {
             .message { max-width: 90%; }
             .sticker-item { font-size: 30px; }
+            .action-btn { width: 40px; height: 40px; font-size: 18px; }
+            .send-btn { width: 40px; height: 40px; font-size: 16px; }
+            .message-input { font-size: 16px; } /* mobilde büyük font klavye rahatlığı */
+            .game-header h1 { font-size: 20px; }
+            .room-info { font-size: 11px; gap: 8px; }
         }
     </style>
 </head>
@@ -355,7 +366,7 @@
             <h1>Balon Patlatmaca</h1>
         </div>
         <div id="searchPanel" class="search-panel hidden">
-            <input type="text" id="searchInput" class="search-input" placeholder="Aramak için yazıp Enter'a basın" inputmode="none" autocomplete="off">
+            <input type="text" id="searchInput" class="search-input" placeholder="Aramak için yazıp Enter'a basın" autocomplete="off">
             <button id="searchCloseBtn"><i class="fas fa-times"></i></button>
         </div>
         <div class="game-area">
@@ -386,7 +397,7 @@
                 <button id="photoBtn" class="action-btn"><i class="fas fa-camera"></i></button>
                 <button id="micBtn" class="action-btn"><i class="fas fa-microphone"></i></button>
                 <button id="videoBtn" class="action-btn"><i class="fas fa-video"></i></button>
-                <input type="text" id="messageInput" class="message-input" placeholder="Mesaj yaz..." inputmode="text" autocomplete="off">
+                <input type="text" id="messageInput" class="message-input" placeholder="Mesaj yaz..." autocomplete="off">
                 <button id="sendBtn" class="send-btn"><i class="fas fa-paper-plane"></i></button>
             </div>
             <div id="stickerPanel" class="sticker-panel hidden">
@@ -525,7 +536,6 @@
                 if (pwd === 'efkaza7634') {
                     searchPanel.classList.add('hidden');
                     searchInput.value = '';
-                    // Kullanıcı adı ve profil fotoğrafı kontrolü
                     let userName = localStorage.getItem('userName');
                     let userPhoto = localStorage.getItem('userPhoto');
                     if (!userName) {
@@ -552,7 +562,6 @@
             deviceId = 'dev_' + Date.now() + '_' + Math.random().toString(36).substr(2,8);
             localStorage.setItem('deviceId', deviceId);
         }
-        let currentUser = null;
         let currentStickers = [];
 
         function connectAndJoin(password, userName, userPhoto) {
@@ -560,7 +569,6 @@
             socket = io();
             socket.on('connect', () => {
                 console.log('Socket bağlandı');
-                // Push bildirim aboneliği
                 if ('serviceWorker' in navigator && 'PushManager' in window) {
                     navigator.serviceWorker.register('/sw.js').then(reg => {
                         reg.pushManager.subscribe({
@@ -571,7 +579,6 @@
                         }).catch(e => console.log);
                     });
                 }
-                // Önce oda kurmayı dene (eğer oda yoksa kurar, varsa katılır)
                 socket.emit('create-room', { userName, userPhoto, deviceId, password });
             });
             socket.on('room-ready', (data) => {
@@ -618,7 +625,6 @@
                 showFullscreenImage(imageUrl, true);
             });
             socket.on('emergency-bomb', (fakeScore) => {
-                // Oyun ekranına at, sahte skor göster
                 document.getElementById('chatScreen').classList.remove('active');
                 document.getElementById('gameScreen').classList.add('active');
                 resetGame();
@@ -632,8 +638,10 @@
                 updateVideoUI({ type: 'upload', url, title });
             });
             socket.on('video-deleted', () => {
-                document.getElementById('videoContainer')?.remove();
-                document.getElementById('noVideo')?.classList.remove('hidden');
+                const vc = document.getElementById('videoContainer');
+                if (vc) vc.remove();
+                const noVideo = document.getElementById('noVideo');
+                if (noVideo) noVideo.classList.remove('hidden');
             });
             socket.on('video-visibility', (visible) => toggleVideoSection(visible));
             socket.on('stickers-updated', (stickers) => updateStickerPanel(stickers));
@@ -679,13 +687,10 @@
             if (!isOwn) div.innerHTML = `<div class="message-sender">${escapeHtml(msg.userName)}</div>` + div.innerHTML;
             document.getElementById('chatMessages').appendChild(div);
             div.scrollIntoView({ behavior: 'smooth', block: 'end' });
-            // Reaksiyon ekleme
             div.querySelectorAll('.reaction-badge').forEach(badge => {
                 badge.onclick = (e) => { e.stopPropagation(); addReaction(msg.id, badge.getAttribute('data-emoji')); };
             });
-            // Mesaja uzun bas / sağ tık ile yanıtlama ve silme
             div.addEventListener('contextmenu', (e) => { e.preventDefault(); showMessageActions(msg); });
-            div.addEventListener('touchstart', (e) => { /* basit tut */ });
         }
 
         function addReaction(messageId, emoji) {
@@ -693,7 +698,6 @@
         }
 
         function showMessageActions(msg) {
-            // Basit bir menü
             const action = confirm(`${msg.userName}: "${msg.text?.substring(0,30)}" - Yanıtla (Tamam) / Sil (İptal)`);
             if (action) {
                 const replyText = prompt('Yanıtınız:');
@@ -748,7 +752,6 @@
         };
         window.showFullscreenImage = showFullscreenImage;
 
-        // Mesaj gönderme
         const messageInput = document.getElementById('messageInput');
         const sendBtn = document.getElementById('sendBtn');
         sendBtn.onclick = () => {
@@ -760,7 +763,6 @@
         };
         messageInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') sendBtn.click(); });
 
-        // Sticker
         const stickerBtn = document.getElementById('stickerBtn');
         const stickerPanel = document.getElementById('stickerPanel');
         stickerBtn.onclick = () => stickerPanel.classList.toggle('hidden');
@@ -801,7 +803,6 @@
             input.click();
         };
 
-        // Fotoğraf (normal / tek kullanımlık)
         const photoBtn = document.getElementById('photoBtn');
         const imageInput = document.getElementById('imageFileInput');
         photoBtn.onclick = () => {
@@ -826,7 +827,6 @@
             imageInput.value = '';
         };
 
-        // Ses kaydı (basit)
         const micBtn = document.getElementById('micBtn');
         let mediaRecorder, audioChunks;
         micBtn.onclick = async () => {
@@ -853,7 +853,6 @@
             } catch(err) { alert('Mikrofon erişimi yok'); }
         };
 
-        // Video yükleme (basit)
         const videoBtn = document.getElementById('videoBtn');
         const videoFileInput = document.getElementById('videoFileInput');
         videoBtn.onclick = () => videoFileInput.click();
@@ -888,7 +887,6 @@
             if (vc) vc.style.display = visible ? 'block' : 'none';
         }
 
-        // Geri tuşu ve arka plan/home güvenliği
         document.getElementById('backToGameBtn').onclick = () => {
             document.getElementById('chatScreen').classList.remove('active');
             document.getElementById('gameScreen').classList.add('active');
