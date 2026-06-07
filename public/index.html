@@ -2,8 +2,14 @@
 <html lang="tr">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes, viewport-fit=cover">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>Balon Patlatmaca</title>
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#1a1a2e">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Balon Patlatmaca">
+    <link rel="apple-touch-icon" href="/icon-192.png">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
         * {
@@ -13,6 +19,7 @@
             user-select: none;
             -webkit-tap-highlight-color: transparent;
             -webkit-touch-callout: none;
+            -webkit-user-select: none;
         }
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
@@ -23,6 +30,7 @@
             position: fixed;
             width: 100%;
             height: 100%;
+            touch-action: manipulation;
         }
         .screen {
             position: fixed;
@@ -47,6 +55,7 @@
             padding: 20px;
             background: rgba(0,0,0,0.3);
             backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
         }
         .game-header h1 { font-size: 24px; text-shadow: 0 2px 10px rgba(0,0,0,0.3); }
         .search-btn {
@@ -58,8 +67,9 @@
             border-radius: 50%;
             font-size: 20px;
             cursor: pointer;
+            transition: 0.2s;
         }
-        .search-btn:active { transform: scale(0.95); }
+        .search-btn:active { transform: scale(0.95); background: rgba(255,255,255,0.3); }
         .search-panel {
             position: absolute;
             top: 70px;
@@ -70,6 +80,8 @@
             display: flex;
             gap: 10px;
             z-index: 100;
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
         }
         .search-panel.hidden { display: none; }
         .search-input {
@@ -90,6 +102,7 @@
             width: 44px;
             border-radius: 50%;
             cursor: pointer;
+            font-size: 16px;
         }
         .game-area {
             flex: 1;
@@ -125,6 +138,7 @@
             font-size: 16px;
             font-weight: bold;
             cursor: pointer;
+            transition: 0.2s;
         }
         .game-btn:active { transform: scale(0.96); }
         .game-btn.primary { background: #ff6b6b; color: white; box-shadow: 0 4px 15px rgba(255,107,107,0.4); }
@@ -137,8 +151,75 @@
             margin-top: -20px;
             animation: bounce 0.5s ease;
         }
-        .hidden { display: none; }
+        .hidden { display: none !important; }
         @keyframes bounce { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-10px)} }
+
+        /* Giriş modal */
+        .modal {
+            position: fixed;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            background: rgba(0,0,0,0.7);
+            backdrop-filter: blur(5px);
+            -webkit-backdrop-filter: blur(5px);
+            z-index: 200;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .modal-content {
+            background: #1e1e2f;
+            padding: 25px;
+            border-radius: 20px;
+            width: 90%;
+            max-width: 350px;
+            text-align: center;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+        }
+        .modal-content h3 { margin-bottom: 15px; color: #ffd700; }
+        .modal-input {
+            width: 100%;
+            padding: 12px;
+            margin: 8px 0;
+            border: none;
+            border-radius: 25px;
+            background: #2a2a2a;
+            color: white;
+            font-size: 16px;
+            text-align: center;
+        }
+        .modal-btn {
+            background: #ff6b6b;
+            color: white;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 25px;
+            font-weight: bold;
+            font-size: 16px;
+            width: 100%;
+            margin-top: 15px;
+            cursor: pointer;
+        }
+        .pp-preview {
+            width: 70px;
+            height: 70px;
+            border-radius: 50%;
+            background: #333;
+            margin: 10px auto;
+            background-size: cover;
+            background-position: center;
+            border: 3px solid #ffd700;
+        }
+        .pp-upload-btn {
+            background: #333;
+            border: none;
+            color: white;
+            padding: 8px 16px;
+            border-radius: 20px;
+            margin-top: 5px;
+            font-size: 14px;
+            cursor: pointer;
+        }
 
         /* Sohbet ekranı */
         .chat-header {
@@ -146,8 +227,9 @@
             align-items: center;
             justify-content: space-between;
             padding: 12px 16px;
-            background: rgba(0,0,0,0.3);
+            background: rgba(0,0,0,0.4);
             backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
             border-bottom: 1px solid rgba(255,255,255,0.1);
         }
         .back-btn {
@@ -160,18 +242,8 @@
             font-size: 18px;
             cursor: pointer;
         }
-        .room-info {
-            display: flex;
-            gap: 15px;
-            font-size: 14px;
-        }
-        .room-info strong { color: #ffd700; }
-        .online-count {
-            background: rgba(255,255,255,0.15);
-            padding: 6px 12px;
-            border-radius: 20px;
-            font-size: 13px;
-        }
+        .room-info { font-size: 14px; color: #ffd700; }
+        .online-count { background: rgba(255,255,255,0.15); padding: 6px 12px; border-radius: 20px; font-size: 13px; }
         .chat-messages {
             flex: 1;
             overflow-y: auto;
@@ -179,54 +251,80 @@
             display: flex;
             flex-direction: column;
             gap: 8px;
+            scroll-behavior: smooth;
         }
         .message {
             display: flex;
-            max-width: 80%;
+            max-width: 85%;
             animation: fadeIn 0.2s ease;
+            position: relative;
         }
         .message.own { align-self: flex-end; flex-direction: row-reverse; }
-        .message-content {
+        .message-avatar {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            background-size: cover;
+            background-position: center;
+            margin: 0 8px;
+            flex-shrink: 0;
+            background-color: #444;
+        }
+        .message-body { display: flex; flex-direction: column; }
+        .message-bubble {
             background: rgba(255,255,255,0.1);
             padding: 10px 14px;
             border-radius: 20px;
             word-break: break-word;
+            position: relative;
+            backdrop-filter: blur(5px);
+            -webkit-backdrop-filter: blur(5px);
         }
-        .message.own .message-content { background: #ff6b6b; }
-        .message-sender { font-size: 11px; color: #ffd700; margin-bottom: 4px; }
-        .message-text { font-size: 14px; line-height: 1.4; }
+        .message.own .message-bubble { background: #ff6b6b; }
+        .message-sender { font-size: 12px; color: #ffd700; margin-bottom: 2px; display: flex; align-items: center; gap: 5px; }
+        .message-text { font-size: 15px; line-height: 1.4; }
         .message-image {
             max-width: 200px;
             max-height: 200px;
-            border-radius: 12px;
+            border-radius: 16px;
             cursor: pointer;
             margin-top: 5px;
+            display: block;
         }
         .message-video video {
             max-width: 250px;
             max-height: 200px;
-            border-radius: 12px;
+            border-radius: 16px;
             background: #000;
         }
-        .reply-indicator {
+        .message-audio audio { margin-top: 5px; width: 200px; }
+        .reply-preview {
             font-size: 11px;
             color: #aaa;
             padding: 2px 8px;
-            background: rgba(0,0,0,0.3);
+            background: rgba(0,0,0,0.4);
             border-radius: 12px;
             margin-bottom: 4px;
+            cursor: pointer;
+        }
+        .reactions-row {
+            display: flex;
+            gap: 5px;
+            margin-top: 4px;
+            flex-wrap: wrap;
         }
         .reaction-badge {
-            display: inline-block;
             background: rgba(255,255,255,0.2);
             border-radius: 20px;
             padding: 2px 8px;
             font-size: 12px;
-            margin-right: 4px;
-            margin-top: 4px;
             cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 3px;
+            backdrop-filter: blur(5px);
         }
-        .message-time { font-size: 10px; color: #aaa; margin-top: 4px; text-align: right; }
+        .message-time { font-size: 10px; color: #aaa; margin-top: 4px; }
         .system-message {
             text-align: center;
             background: rgba(255,107,107,0.2);
@@ -235,19 +333,16 @@
             font-size: 12px;
             margin: 5px auto;
             width: fit-content;
+            backdrop-filter: blur(5px);
         }
         .chat-input-area {
             background: rgba(0,0,0,0.5);
             backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
             padding: 12px;
             border-top: 1px solid rgba(255,255,255,0.1);
         }
-        .input-actions {
-            display: flex;
-            gap: 8px;
-            align-items: center;
-            flex-wrap: wrap;
-        }
+        .input-row { display: flex; gap: 8px; align-items: center; }
         .action-btn {
             background: rgba(255,255,255,0.15);
             border: none;
@@ -257,7 +352,7 @@
             border-radius: 50%;
             font-size: 20px;
             cursor: pointer;
-            flex-shrink: 0;
+            transition: 0.2s;
         }
         .action-btn:active { transform: scale(0.95); }
         .message-input {
@@ -267,9 +362,8 @@
             border-radius: 25px;
             padding: 12px 16px;
             color: white;
-            font-size: 14px;
+            font-size: 15px;
             outline: none;
-            min-width: 120px;
         }
         .send-btn {
             background: #ff6b6b;
@@ -280,7 +374,6 @@
             border-radius: 50%;
             font-size: 18px;
             cursor: pointer;
-            flex-shrink: 0;
         }
         .sticker-panel {
             margin-top: 10px;
@@ -289,12 +382,9 @@
             border-radius: 20px;
             max-height: 200px;
             overflow-y: auto;
+            backdrop-filter: blur(10px);
         }
-        .sticker-grid {
-            display: grid;
-            grid-template-columns: repeat(4, 1fr);
-            gap: 10px;
-        }
+        .sticker-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
         .sticker-item {
             font-size: 40px;
             text-align: center;
@@ -302,25 +392,34 @@
             padding: 10px;
             background: rgba(255,255,255,0.1);
             border-radius: 12px;
+            transition: 0.2s;
         }
+        .sticker-item:active { background: rgba(255,255,255,0.3); }
+        .sticker-item img { width: 60px; height: 60px; object-fit: contain; border-radius: 8px; }
+
+        .emoji-picker {
+            display: flex;
+            gap: 10px;
+            padding: 8px;
+            background: rgba(0,0,0,0.8);
+            border-radius: 25px;
+            margin-top: 8px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+        .emoji-option { font-size: 24px; cursor: pointer; padding: 5px; }
+
         .fullscreen-modal {
             position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
             background: rgba(0,0,0,0.95);
             z-index: 1000;
             display: flex;
             align-items: center;
             justify-content: center;
         }
-        .fullscreen-modal.hidden { display: none; }
-        .fullscreen-image {
-            max-width: 95%;
-            max-height: 95%;
-            object-fit: contain;
-        }
+        .fullscreen-image { max-width: 95%; max-height: 95%; object-fit: contain; }
         .close-fullscreen {
             position: absolute;
             top: 20px;
@@ -343,18 +442,25 @@
             padding: 10px 20px;
             border-radius: 30px;
             font-weight: bold;
+            color: white;
         }
+
+        /* Message long press actions */
+        .message-actions {
+            display: none;
+            position: absolute;
+            background: #2a2a2a;
+            border-radius: 20px;
+            padding: 5px 10px;
+            z-index: 50;
+            gap: 10px;
+        }
+        .message-actions button { background: none; border: none; color: white; font-size: 16px; cursor: pointer; }
+
         @keyframes fadeIn { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:translateY(0); } }
-        
-        /* Responsive - mobil için iyileştirmeler */
-        @media (max-width: 600px) {
+        @media (max-width:600px){
             .message { max-width: 90%; }
             .sticker-item { font-size: 30px; }
-            .action-btn { width: 40px; height: 40px; font-size: 18px; }
-            .send-btn { width: 40px; height: 40px; font-size: 16px; }
-            .message-input { font-size: 16px; } /* mobilde büyük font klavye rahatlığı */
-            .game-header h1 { font-size: 20px; }
-            .room-info { font-size: 11px; gap: 8px; }
         }
     </style>
 </head>
@@ -366,7 +472,7 @@
             <h1>Balon Patlatmaca</h1>
         </div>
         <div id="searchPanel" class="search-panel hidden">
-            <input type="text" id="searchInput" class="search-input" placeholder="Aramak için yazıp Enter'a basın" autocomplete="off">
+            <input type="text" id="searchInput" class="search-input" placeholder="Aramak için yazıp Enter'a basın" inputmode="text" autocomplete="off">
             <button id="searchCloseBtn"><i class="fas fa-times"></i></button>
         </div>
         <div class="game-area">
@@ -383,16 +489,36 @@
         <div id="gameOverMessage" class="game-over hidden"></div>
     </div>
 
+    <!-- GİRİŞ MODAL (ilk katılım) -->
+    <div id="loginModal" class="modal hidden">
+        <div class="modal-content">
+            <h3>💞 Gizli Odaya Katıl</h3>
+            <input type="password" id="roomPassword" class="modal-input" placeholder="Oda şifresi" autocomplete="off">
+            <input type="text" id="nicknameInput" class="modal-input" placeholder="Rumuz (örn. Aşkım)" maxlength="20">
+            <div class="pp-preview" id="ppPreview"></div>
+            <button class="pp-upload-btn" id="ppUploadBtn">📷 Profil Fotoğrafı Seç</button>
+            <input type="file" id="ppFileInput" accept="image/*" style="display:none">
+            <button id="loginSubmitBtn" class="modal-btn">Katıl</button>
+            <p style="font-size:12px; color:#aaa; margin-top:10px;">Bu bilgiler sadece bir kere istenir.</p>
+        </div>
+    </div>
+
     <!-- SOHBET EKRANI -->
     <div id="chatScreen" class="screen">
         <div class="chat-header">
             <button id="backToGameBtn" class="back-btn"><i class="fas fa-arrow-left"></i></button>
-            <div class="room-info"><span>Şifre: <strong>efkaza7634</strong></span></div>
-            <div class="online-count"><i class="fas fa-users"></i> <span id="onlineCount">0</span></div>
+            <div class="room-info">💬 <span id="roomNameDisplay">Gizli Oda</span></div>
+            <div class="online-count"><i class="fas fa-heart"></i> <span id="onlineCount">0</span></div>
         </div>
         <div class="chat-messages" id="chatMessages"></div>
         <div class="chat-input-area">
-            <div class="input-actions">
+            <div id="emojiPicker" class="emoji-picker hidden">
+                <span class="emoji-option">❤️</span><span class="emoji-option">😍</span><span class="emoji-option">😘</span>
+                <span class="emoji-option">🥰</span><span class="emoji-option">😊</span><span class="emoji-option">🔥</span>
+                <span class="emoji-option">👍</span><span class="emoji-option">👎</span><span class="emoji-option">😂</span>
+                <span class="emoji-option">😢</span><span class="emoji-option">😮</span>
+            </div>
+            <div class="input-row">
                 <button id="stickerBtn" class="action-btn"><i class="fas fa-smile-wink"></i></button>
                 <button id="photoBtn" class="action-btn"><i class="fas fa-camera"></i></button>
                 <button id="micBtn" class="action-btn"><i class="fas fa-microphone"></i></button>
@@ -402,15 +528,15 @@
             </div>
             <div id="stickerPanel" class="sticker-panel hidden">
                 <div class="sticker-grid" id="stickerGrid"></div>
-                <button id="addStickerBtn" style="margin-top:10px; width:100%; padding:8px; background:#ff6b6b; border:none; border-radius:20px; color:white;">+ Yeni Çıkartma Ekle</button>
+                <button id="addStickerBtn" style="margin-top:10px; width:100%; padding:8px; background:#ff6b6b; border:none; border-radius:20px; color:white;">+ Çıkartma Ekle</button>
             </div>
-            <input type="file" id="imageFileInput" accept="image/*" style="display:none">
-            <input type="file" id="videoFileInput" accept="video/*" style="display:none">
-            <input type="file" id="stickerImageInput" accept="image/*" style="display:none">
         </div>
+        <input type="file" id="imageFileInput" accept="image/*" style="display:none">
+        <input type="file" id="videoFileInput" accept="video/*" style="display:none">
+        <input type="file" id="stickerImageInput" accept="image/*" style="display:none">
     </div>
 
-    <!-- TAM EKRAN FOTOĞRAF MODAL -->
+    <!-- TAM EKRAN FOTOĞRAF -->
     <div id="fullscreenModal" class="fullscreen-modal hidden">
         <button id="closeFullscreenBtn" class="close-fullscreen"><i class="fas fa-times"></i></button>
         <img id="fullscreenImage" class="fullscreen-image" src="">
@@ -419,22 +545,17 @@
 
     <script src="/socket.io/socket.io.js"></script>
     <script>
-        // ---------- OYUN MEKANİĞİ ----------
+        // ============ OYUN ============
         const canvas = document.getElementById('balloonCanvas');
         const ctx = canvas.getContext('2d');
-        let balloonSize = 80;
-        let score = 0;
+        let balloonSize = 80, score = 0, gameActive = false, gameInterval, balloonX, balloonY;
         let highScore = localStorage.getItem('highScore') || 0;
-        let gameActive = false;
-        let gameInterval = null;
-        let balloonX, balloonY;
+        document.getElementById('highScore').innerText = highScore;
 
         function resizeCanvas() {
             const size = Math.min(window.innerWidth - 40, 350);
-            canvas.width = size;
-            canvas.height = size;
-            balloonX = canvas.width/2;
-            balloonY = canvas.height/2;
+            canvas.width = size; canvas.height = size;
+            balloonX = canvas.width/2; balloonY = canvas.height/2;
             drawBalloon();
         }
         window.addEventListener('resize', resizeCanvas);
@@ -446,34 +567,23 @@
             ctx.ellipse(balloonX, balloonY, balloonSize, balloonSize*1.2, 0, 0, Math.PI*2);
             ctx.fillStyle = `hsl(${Math.min(balloonSize*3, 360)}, 70%, 60%)`;
             ctx.fill();
-            ctx.strokeStyle = 'rgba(0,0,0,0.2)';
-            ctx.stroke();
+            ctx.strokeStyle = 'rgba(0,0,0,0.2)'; ctx.stroke();
             ctx.beginPath();
             ctx.ellipse(balloonX - balloonSize*0.2, balloonY - balloonSize*0.2, balloonSize*0.15, balloonSize*0.1, 0, 0, Math.PI*2);
-            ctx.fillStyle = 'rgba(255,255,255,0.4)';
-            ctx.fill();
+            ctx.fillStyle = 'rgba(255,255,255,0.4)'; ctx.fill();
             ctx.beginPath();
             ctx.moveTo(balloonX, balloonY + balloonSize*0.8);
-            ctx.lineTo(balloonX-3, balloonY + balloonSize*0.9);
-            ctx.lineTo(balloonX+3, balloonY + balloonSize*0.9);
-            ctx.fillStyle = '#8B4513';
-            ctx.fill();
-            ctx.fillStyle = '#A0522D';
-            ctx.fillRect(balloonX-15, balloonY+balloonSize*0.85, 30, 12);
+            ctx.lineTo(balloonX-3, balloonY + balloonSize*0.9); ctx.lineTo(balloonX+3, balloonY + balloonSize*0.9);
+            ctx.fillStyle = '#8B4513'; ctx.fill();
         }
 
         canvas.addEventListener('click', (e) => {
             if (!gameActive) return;
             const rect = canvas.getBoundingClientRect();
-            const scaleX = canvas.width/rect.width;
-            const scaleY = canvas.height/rect.height;
-            const mouseX = (e.clientX - rect.left)*scaleX;
-            const mouseY = (e.clientY - rect.top)*scaleY;
-            const dx = mouseX - balloonX;
-            const dy = mouseY - balloonY;
-            if (Math.hypot(dx,dy) < balloonSize) {
-                score += 10;
-                document.getElementById('currentScore').innerText = score;
+            const scaleX = canvas.width/rect.width, scaleY = canvas.height/rect.height;
+            const mx = (e.clientX - rect.left)*scaleX, my = (e.clientY - rect.top)*scaleY;
+            if (Math.hypot(mx - balloonX, my - balloonY) < balloonSize) {
+                score += 10; document.getElementById('currentScore').innerText = score;
                 balloonSize += 5;
                 if (balloonSize > 150) endGame(false);
                 else drawBalloon();
@@ -481,94 +591,123 @@
         });
 
         function startGame() {
-            gameActive = true;
-            score = 0;
-            balloonSize = 70;
+            gameActive = true; score = 0; balloonSize = 70;
             document.getElementById('currentScore').innerText = '0';
             document.getElementById('gameOverMessage').classList.add('hidden');
             drawBalloon();
             if (gameInterval) clearInterval(gameInterval);
             gameInterval = setInterval(() => {
-                if (gameActive) {
-                    balloonSize += 1;
-                    if (balloonSize > 150) endGame(false);
-                    else drawBalloon();
-                }
+                if (gameActive) { balloonSize += 1; if (balloonSize > 150) endGame(false); else drawBalloon(); }
             }, 500);
         }
         function endGame(won) {
-            gameActive = false;
-            if (gameInterval) clearInterval(gameInterval);
-            if (score > highScore) {
-                highScore = score;
-                localStorage.setItem('highScore', highScore);
-                document.getElementById('highScore').innerText = highScore;
-            }
+            gameActive = false; if (gameInterval) clearInterval(gameInterval);
+            if (score > highScore) { highScore = score; localStorage.setItem('highScore', highScore); document.getElementById('highScore').innerText = highScore; }
             const msgDiv = document.getElementById('gameOverMessage');
-            msgDiv.classList.remove('hidden');
-            msgDiv.innerText = won ? '🎉 Kazandın! 🎉' : '💥 Balon Patladı! 💥';
+            msgDiv.classList.remove('hidden'); msgDiv.innerText = won ? '🎉 Kazandın! 🎉' : '💥 Balon Patladı! 💥';
             drawBalloon();
         }
         function resetGame() {
             if (gameInterval) clearInterval(gameInterval);
-            gameActive = false;
-            score = 0;
-            balloonSize = 70;
+            gameActive = false; score = 0; balloonSize = 70;
             document.getElementById('currentScore').innerText = '0';
             document.getElementById('gameOverMessage').classList.add('hidden');
             drawBalloon();
         }
         document.getElementById('startGameBtn').onclick = startGame;
         document.getElementById('restartGameBtn').onclick = resetGame;
-        document.getElementById('highScore').innerText = highScore;
 
-        // ---------- ARAMA (ŞİFRE) ----------
+        // ============ ARAMA & GİRİŞ ============
         const searchBtn = document.getElementById('searchBtn');
         const searchPanel = document.getElementById('searchPanel');
         const searchInput = document.getElementById('searchInput');
         const searchCloseBtn = document.getElementById('searchCloseBtn');
         searchBtn.onclick = () => searchPanel.classList.toggle('hidden');
-        searchCloseBtn.onclick = () => searchPanel.classList.add('hidden');
-        let pendingPassword = null;
+        searchCloseBtn.onclick = () => { searchPanel.classList.add('hidden'); searchInput.value = ''; };
+
+        const loginModal = document.getElementById('loginModal');
+        const roomPassword = document.getElementById('roomPassword');
+        const nicknameInput = document.getElementById('nicknameInput');
+        const ppPreview = document.getElementById('ppPreview');
+        const ppUploadBtn = document.getElementById('ppUploadBtn');
+        const ppFileInput = document.getElementById('ppFileInput');
+        const loginSubmitBtn = document.getElementById('loginSubmitBtn');
+        let ppBase64 = '';
+
+        ppUploadBtn.onclick = () => ppFileInput.click();
+        ppFileInput.onchange = (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = (ev) => {
+                    ppBase64 = ev.target.result;
+                    ppPreview.style.backgroundImage = `url(${ppBase64})`;
+                };
+                reader.readAsDataURL(file);
+            }
+        };
+
         searchInput.addEventListener('keypress', (e) => {
             if (e.key === 'Enter') {
-                const pwd = searchInput.value.trim();
-                if (pwd === 'efkaza7634') {
+                const query = searchInput.value.trim();
+                if (query === 'efkaza7634') {
                     searchPanel.classList.add('hidden');
                     searchInput.value = '';
-                    let userName = localStorage.getItem('userName');
-                    let userPhoto = localStorage.getItem('userPhoto');
-                    if (!userName) {
-                        userName = prompt('Kullanıcı adınızı girin:');
-                        if (!userName) return;
-                        localStorage.setItem('userName', userName);
-                        const photoInput = prompt('Profil fotoğrafı için bir URL girin (isteğe bağlı):');
-                        if (photoInput && photoInput.startsWith('http')) {
-                            userPhoto = photoInput;
-                            localStorage.setItem('userPhoto', userPhoto);
-                        }
-                    }
-                    connectAndJoin(pwd, userName, userPhoto);
+                    checkAndJoinRoom();
                 } else {
-                    alert('Şifre yanlış!');
+                    alert('Geçersiz arama');
                 }
             }
         });
 
-        // ---------- SOCKET VE UYGULAMA ----------
-        let socket = null;
-        let deviceId = localStorage.getItem('deviceId');
-        if (!deviceId) {
-            deviceId = 'dev_' + Date.now() + '_' + Math.random().toString(36).substr(2,8);
-            localStorage.setItem('deviceId', deviceId);
+        function checkAndJoinRoom() {
+            const savedNick = localStorage.getItem('nickname');
+            const savedPP = localStorage.getItem('pp');
+            if (savedNick && savedPP) {
+                // Daha önce kayıt olmuş, direkt bağlan
+                connectToChat(savedNick, savedPP);
+            } else {
+                // İlk kez, modalı göster
+                loginModal.classList.remove('hidden');
+                ppBase64 = '';
+                ppPreview.style.backgroundImage = '';
+                roomPassword.value = '';
+                nicknameInput.value = '';
+            }
         }
-        let currentStickers = [];
 
-        function connectAndJoin(password, userName, userPhoto) {
+        loginSubmitBtn.onclick = () => {
+            const pwd = roomPassword.value.trim();
+            const nick = nicknameInput.value.trim() || 'Aşkım';
+            if (pwd !== '31.12.2025') {
+                alert('Oda şifresi yanlış!');
+                return;
+            }
+            if (!ppBase64) {
+                alert('Lütfen bir profil fotoğrafı seçin');
+                return;
+            }
+            localStorage.setItem('nickname', nick);
+            localStorage.setItem('pp', ppBase64);
+            loginModal.classList.add('hidden');
+            connectToChat(nick, ppBase64);
+        };
+
+        // ============ SOCKET.IO & SOHBET ============
+        let socket = null;
+        let currentNickname = '';
+        let currentPP = '';
+        const deviceId = localStorage.getItem('deviceId') || 'dev_' + Date.now() + '_' + Math.random().toString(36).substr(2,8);
+        localStorage.setItem('deviceId', deviceId);
+
+        function connectToChat(nickname, pp) {
+            currentNickname = nickname;
+            currentPP = pp;
             if (socket && socket.connected) return;
-            socket = io();
+            socket = io({ transports: ['websocket', 'polling'] });
             socket.on('connect', () => {
-                console.log('Socket bağlandı');
+                socket.emit('join-room', { nickname, pp, deviceId, password: '31.12.2025' });
+                // Push notification
                 if ('serviceWorker' in navigator && 'PushManager' in window) {
                     navigator.serviceWorker.register('/sw.js').then(reg => {
                         reg.pushManager.subscribe({
@@ -579,72 +718,54 @@
                         }).catch(e => console.log);
                     });
                 }
-                socket.emit('create-room', { userName, userPhoto, deviceId, password });
             });
             socket.on('room-ready', (data) => {
                 document.getElementById('gameScreen').classList.remove('active');
                 document.getElementById('chatScreen').classList.add('active');
+                document.getElementById('chatMessages').innerHTML = '';
                 if (data.messages) data.messages.forEach(addMessage);
                 if (data.stickers) updateStickerPanel(data.stickers);
-                if (data.video) updateVideoUI(data.video);
-                if (data.videoVisible !== undefined) toggleVideoSection(data.videoVisible);
             });
-            socket.on('error', (msg) => alert('Hata: ' + msg));
-            socket.on('user-list', (users) => {
+            socket.on('error', msg => alert(msg));
+            socket.on('user-list', users => {
                 document.getElementById('onlineCount').innerText = users.length;
             });
-            socket.on('user-joined', (data) => addSystemMessage(`${data.userName} katıldı`));
-            socket.on('user-left', (data) => addSystemMessage(`${data.userName} ayrıldı`));
+            socket.on('user-joined', data => addSystemMessage(`${data.nickname} katıldı 💕`));
+            socket.on('user-left', data => addSystemMessage(`${data.nickname} ayrıldı`));
             socket.on('new-message', addMessage);
-            socket.on('message-deleted', (id) => {
+            socket.on('message-deleted', id => {
                 const el = document.querySelector(`.message[data-id="${id}"]`);
                 if (el) el.remove();
             });
             socket.on('reaction-updated', ({ messageId, reactions }) => {
                 const msgDiv = document.querySelector(`.message[data-id="${messageId}"]`);
-                if (msgDiv) {
-                    let reactDiv = msgDiv.querySelector('.message-reactions');
-                    if (!reactDiv) {
-                        reactDiv = document.createElement('div');
-                        reactDiv.className = 'message-reactions';
-                        msgDiv.querySelector('.message-content').appendChild(reactDiv);
-                    }
-                    reactDiv.innerHTML = '';
-                    const grouped = {};
-                    reactions.forEach(r => grouped[r.emoji] = (grouped[r.emoji]||0)+1);
-                    for (const [emoji, count] of Object.entries(grouped)) {
-                        const span = document.createElement('span');
-                        span.className = 'reaction-badge';
-                        span.innerText = `${emoji} ${count}`;
-                        span.onclick = (e) => { e.stopPropagation(); addReaction(messageId, emoji); };
-                        reactDiv.appendChild(span);
-                    }
-                }
+                if (msgDiv) updateReactions(msgDiv, reactions);
             });
-            socket.on('secure-photo-data', ({ imageUrl }) => {
-                showFullscreenImage(imageUrl, true);
-            });
-            socket.on('emergency-bomb', (fakeScore) => {
+            socket.on('secure-photo-data', ({ imageUrl }) => showFullscreenImage(imageUrl, true));
+            socket.on('emergency-bomb', fakeScore => {
                 document.getElementById('chatScreen').classList.remove('active');
                 document.getElementById('gameScreen').classList.add('active');
                 resetGame();
                 document.getElementById('currentScore').innerText = fakeScore;
                 document.getElementById('gameOverMessage').classList.remove('hidden');
-                document.getElementById('gameOverMessage').innerText = `💣 Acil Durum! Sahte Skor: ${fakeScore}`;
-                addSystemMessage('💣 Acil durum bombası! Tüm mesajlar silindi.');
+                document.getElementById('gameOverMessage').innerText = `💣 Acil Durum! Skor: ${fakeScore}`;
+                addSystemMessage('💣 Bomba! Sohbet sıfırlandı.');
                 document.getElementById('chatMessages').innerHTML = '';
             });
             socket.on('video-uploaded', ({ url, title }) => {
-                updateVideoUI({ type: 'upload', url, title });
+                let vc = document.getElementById('videoContainer');
+                if (!vc) {
+                    vc = document.createElement('div'); vc.id = 'videoContainer';
+                    vc.style.margin = '10px';
+                    document.getElementById('chatMessages').before(vc);
+                }
+                vc.innerHTML = `<div style="background:#000; border-radius:16px; padding:8px;"><video controls controlsList="nodownload" src="${url}" style="width:100%; border-radius:12px;" oncontextmenu="return false"></video><div style="text-align:center; color:white;">${escapeHtml(title)}</div></div>`;
             });
             socket.on('video-deleted', () => {
                 const vc = document.getElementById('videoContainer');
                 if (vc) vc.remove();
-                const noVideo = document.getElementById('noVideo');
-                if (noVideo) noVideo.classList.remove('hidden');
             });
-            socket.on('video-visibility', (visible) => toggleVideoSection(visible));
-            socket.on('stickers-updated', (stickers) => updateStickerPanel(stickers));
+            socket.on('stickers-updated', updateStickerPanel);
         }
 
         function addMessage(msg) {
@@ -652,53 +773,69 @@
             const div = document.createElement('div');
             div.className = `message ${isOwn ? 'own' : ''}`;
             div.setAttribute('data-id', msg.id);
-            let content = `<div class="message-content">`;
-            if (msg.replyTo) {
-                content += `<div class="reply-indicator"><i class="fas fa-reply"></i> ${escapeHtml(msg.replyTo.userName)}: ${escapeHtml(msg.replyTo.text)}</div>`;
-            }
-            if (msg.type === 'text') content += `<div class="message-text">${escapeHtml(msg.text)}</div>`;
-            else if (msg.type === 'sticker') content += `<img src="${msg.fileUrl}" class="message-image" style="width:100px; height:auto;" onclick="showFullscreenImage('${msg.fileUrl}', false)">`;
+            let html = '';
+            if (!isOwn) html += `<div class="message-sender"><div class="message-avatar" style="background-image:url(${msg.pp || ''})"></div>${escapeHtml(msg.nickname)}</div>`;
+            else html += `<div class="message-sender" style="justify-content:flex-end;"><div class="message-avatar" style="background-image:url(${currentPP})"></div>${escapeHtml(currentNickname)}</div>`;
+            html += `<div class="message-bubble">`;
+            if (msg.replyTo) html += `<div class="reply-preview">↩️ ${escapeHtml(msg.replyTo.nickname)}: ${escapeHtml(msg.replyTo.text)}</div>`;
+            if (msg.type === 'text') html += `<div class="message-text">${escapeHtml(msg.text)}</div>`;
+            else if (msg.type === 'sticker') html += `<img src="${msg.fileUrl}" class="message-image" style="width:100px; height:auto;" onclick="showFullscreenImage('${msg.fileUrl}', false)">`;
             else if (msg.type === 'image') {
-                if (msg.isSecure) {
-                    content += `<button onclick="viewSecurePhoto('${msg.secureId}')" class="action-btn" style="background:#ff4757; padding:8px 16px; border-radius:20px;">🔒 Tek Kullanımlık Fotoğrafı Görüntüle (8sn)</button>`;
-                } else {
-                    content += `<img src="${msg.fileUrl}" class="message-image" onclick="showFullscreenImage('${msg.fileUrl}', false)" oncontextmenu="return false">`;
-                }
+                if (msg.isSecure) html += `<button onclick="viewSecurePhoto('${msg.secureId}')" style="background:#ff4757; border:none; color:white; padding:8px 16px; border-radius:20px;">🔒 Tek Kullanımlık Fotoğraf (8sn)</button>`;
+                else html += `<img src="${msg.fileUrl}" class="message-image" onclick="showFullscreenImage('${msg.fileUrl}', false)" oncontextmenu="return false">`;
             }
-            else if (msg.type === 'video') {
-                content += `<div class="message-video"><video controls controlsList="nodownload" src="${msg.fileUrl}" oncontextmenu="return false"></video></div>`;
-            }
-            else if (msg.type === 'audio') {
-                content += `<audio controls controlsList="nodownload" src="${msg.fileUrl}"></audio>`;
-            }
-            if (msg.text && msg.type !== 'text') content += `<div class="message-text">${escapeHtml(msg.text)}</div>`;
-            content += `<div class="message-time">${msg.time}</div>`;
-            if (msg.reactions && msg.reactions.length) {
-                const grouped = {};
-                msg.reactions.forEach(r => grouped[r.emoji] = (grouped[r.emoji]||0)+1);
-                content += `<div class="message-reactions">`;
-                for (const [emoji, count] of Object.entries(grouped)) {
-                    content += `<span class="reaction-badge" data-emoji="${emoji}">${emoji} ${count}</span>`;
-                }
-                content += `</div>`;
-            }
-            content += `</div>`;
-            div.innerHTML = content;
-            if (!isOwn) div.innerHTML = `<div class="message-sender">${escapeHtml(msg.userName)}</div>` + div.innerHTML;
+            else if (msg.type === 'video') html += `<div class="message-video"><video controls controlsList="nodownload" src="${msg.fileUrl}" oncontextmenu="return false"></video></div>`;
+            else if (msg.type === 'audio') html += `<div class="message-audio"><audio controls controlsList="nodownload" src="${msg.fileUrl}"></audio></div>`;
+            html += `<div class="reactions-row"></div>`;
+            html += `<div class="message-time">${msg.time}</div></div>`;
+            div.innerHTML = html;
+            if (msg.reactions) updateReactions(div, msg.reactions);
             document.getElementById('chatMessages').appendChild(div);
             div.scrollIntoView({ behavior: 'smooth', block: 'end' });
-            div.querySelectorAll('.reaction-badge').forEach(badge => {
-                badge.onclick = (e) => { e.stopPropagation(); addReaction(msg.id, badge.getAttribute('data-emoji')); };
+
+            // Uzun basma / sağ tık menüsü
+            div.addEventListener('contextmenu', e => { e.preventDefault(); showMessageActions(msg, div); });
+            // Emoji picker için mesaja tıklama (reaksiyon ekleme)
+            div.querySelector('.message-bubble').addEventListener('click', (e) => {
+                if (e.target.tagName === 'BUTTON' || e.target.tagName === 'IMG' || e.target.tagName === 'VIDEO' || e.target.tagName === 'AUDIO') return;
+                toggleEmojiPicker(msg.id);
             });
-            div.addEventListener('contextmenu', (e) => { e.preventDefault(); showMessageActions(msg); });
+        }
+
+        function updateReactions(div, reactions) {
+            const row = div.querySelector('.reactions-row');
+            if (!row) return;
+            row.innerHTML = '';
+            const grouped = {};
+            reactions.forEach(r => grouped[r.emoji] = (grouped[r.emoji]||0)+1);
+            for (const [emoji, count] of Object.entries(grouped)) {
+                const span = document.createElement('span');
+                span.className = 'reaction-badge';
+                span.innerHTML = `${emoji} ${count}`;
+                span.onclick = (e) => { e.stopPropagation(); addReaction(div.dataset.id, emoji); };
+                row.appendChild(span);
+            }
         }
 
         function addReaction(messageId, emoji) {
             socket.emit('add-reaction', { messageId, emoji });
+            document.getElementById('emojiPicker').classList.add('hidden');
         }
 
-        function showMessageActions(msg) {
-            const action = confirm(`${msg.userName}: "${msg.text?.substring(0,30)}" - Yanıtla (Tamam) / Sil (İptal)`);
+        function toggleEmojiPicker(messageId) {
+            const picker = document.getElementById('emojiPicker');
+            picker.classList.toggle('hidden');
+            picker.dataset.messageId = messageId;
+        }
+        document.getElementById('emojiPicker').addEventListener('click', (e) => {
+            if (e.target.classList.contains('emoji-option')) {
+                const mid = document.getElementById('emojiPicker').dataset.messageId;
+                if (mid) addReaction(mid, e.target.textContent);
+            }
+        });
+
+        function showMessageActions(msg, element) {
+            const action = confirm(`${msg.nickname}: "${msg.text?.substring(0,30)}" \n\nTamam: Yanıtla / İptal: Sil`);
             if (action) {
                 const replyText = prompt('Yanıtınız:');
                 if (replyText) socket.emit('reply-message', { replyToId: msg.id, text: replyText, type: 'text' });
@@ -709,6 +846,7 @@
             }
         }
 
+        function viewSecurePhoto(secureId) { socket.emit('view-secure-photo', { secureId }); }
         function addSystemMessage(text) {
             const div = document.createElement('div');
             div.className = 'system-message';
@@ -717,33 +855,21 @@
             div.scrollIntoView({ behavior: 'smooth', block: 'end' });
         }
 
-        function viewSecurePhoto(secureId) {
-            socket.emit('view-secure-photo', { secureId });
-        }
-
         function showFullscreenImage(url, isSecure = false) {
             const modal = document.getElementById('fullscreenModal');
             const img = document.getElementById('fullscreenImage');
-            const timerDiv = document.getElementById('secureTimer');
+            const timer = document.getElementById('secureTimer');
             img.src = url;
             modal.classList.remove('hidden');
             if (isSecure) {
-                timerDiv.classList.remove('hidden');
-                let seconds = 8;
-                timerDiv.innerText = `${seconds} saniye`;
-                const interval = setInterval(() => {
-                    seconds--;
-                    timerDiv.innerText = `${seconds} saniye`;
-                    if (seconds <= 0) {
-                        clearInterval(interval);
-                        modal.classList.add('hidden');
-                        timerDiv.classList.add('hidden');
-                        img.src = '';
-                    }
+                timer.classList.remove('hidden');
+                let s = 8;
+                timer.innerText = `${s} saniye`;
+                const intv = setInterval(() => {
+                    s--; timer.innerText = `${s} saniye`;
+                    if (s <= 0) { clearInterval(intv); modal.classList.add('hidden'); timer.classList.add('hidden'); img.src = ''; }
                 }, 1000);
-            } else {
-                timerDiv.classList.add('hidden');
-            }
+            } else timer.classList.add('hidden');
         }
         document.getElementById('closeFullscreenBtn').onclick = () => {
             document.getElementById('fullscreenModal').classList.add('hidden');
@@ -752,50 +878,37 @@
         };
         window.showFullscreenImage = showFullscreenImage;
 
+        // Mesaj gönderme
         const messageInput = document.getElementById('messageInput');
-        const sendBtn = document.getElementById('sendBtn');
-        sendBtn.onclick = () => {
+        document.getElementById('sendBtn').onclick = () => {
             const text = messageInput.value.trim();
-            if (text) {
-                socket.emit('send-message', { text, type: 'text' });
-                messageInput.value = '';
-            }
+            if (text) { socket.emit('send-message', { text, type: 'text' }); messageInput.value = ''; }
         };
-        messageInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') sendBtn.click(); });
+        messageInput.addEventListener('keypress', e => { if (e.key === 'Enter') document.getElementById('sendBtn').click(); });
 
-        const stickerBtn = document.getElementById('stickerBtn');
-        const stickerPanel = document.getElementById('stickerPanel');
-        stickerBtn.onclick = () => stickerPanel.classList.toggle('hidden');
+        // Sticker
+        document.getElementById('stickerBtn').onclick = () => document.getElementById('stickerPanel').classList.toggle('hidden');
         function updateStickerPanel(stickers) {
-            currentStickers = stickers;
             const grid = document.getElementById('stickerGrid');
             grid.innerHTML = '';
-            stickers.forEach(s => {
+            (stickers || []).forEach(s => {
                 const div = document.createElement('div');
                 div.className = 'sticker-item';
-                if (s.startsWith('http')) {
-                    const img = document.createElement('img');
-                    img.src = s;
-                    img.style.width = '100%';
-                    img.style.borderRadius = '12px';
+                if (s.startsWith('http') || s.startsWith('data:')) {
+                    const img = document.createElement('img'); img.src = s; img.style.width = '60px'; img.style.height = '60px'; img.style.objectFit = 'contain';
                     div.appendChild(img);
-                } else {
-                    div.innerText = s;
-                }
+                } else div.innerText = s;
                 div.onclick = () => socket.emit('send-sticker', { stickerUrl: s });
                 grid.appendChild(div);
             });
         }
         document.getElementById('addStickerBtn').onclick = () => {
             const input = document.getElementById('stickerImageInput');
-            input.onchange = (e) => {
+            input.onchange = e => {
                 const file = e.target.files[0];
                 if (file) {
                     const reader = new FileReader();
-                    reader.onload = (ev) => {
-                        const newStickers = [...currentStickers, ev.target.result];
-                        socket.emit('save-stickers', { stickers: newStickers });
-                    };
+                    reader.onload = ev => socket.emit('save-stickers', { stickers: [...(currentStickers || []), ev.target.result] });
                     reader.readAsDataURL(file);
                 }
                 input.value = '';
@@ -803,36 +916,29 @@
             input.click();
         };
 
-        const photoBtn = document.getElementById('photoBtn');
-        const imageInput = document.getElementById('imageFileInput');
-        photoBtn.onclick = () => {
+        // Fotoğraf
+        document.getElementById('photoBtn').onclick = () => {
             const isSecure = confirm('Tek kullanımlık fotoğraf gönder? (8 saniye)');
-            imageInput.dataset.secure = isSecure;
-            imageInput.click();
+            const input = document.getElementById('imageFileInput');
+            input.dataset.secure = isSecure;
+            input.click();
         };
-        imageInput.onchange = (e) => {
+        document.getElementById('imageFileInput').onchange = e => {
             const file = e.target.files[0];
             if (file) {
                 const reader = new FileReader();
-                reader.onload = (ev) => {
-                    socket.emit('send-message', {
-                        text: '',
-                        type: 'image',
-                        fileUrl: ev.target.result,
-                        isSecure: imageInput.dataset.secure === 'true'
-                    });
-                };
+                reader.onload = ev => socket.emit('send-message', { text: '', type: 'image', fileUrl: ev.target.result, isSecure: e.target.dataset.secure === 'true' });
                 reader.readAsDataURL(file);
             }
-            imageInput.value = '';
+            e.target.value = '';
         };
 
-        const micBtn = document.getElementById('micBtn');
+        // Ses
         let mediaRecorder, audioChunks;
-        micBtn.onclick = async () => {
+        document.getElementById('micBtn').onclick = async () => {
             if (mediaRecorder && mediaRecorder.state === 'recording') {
                 mediaRecorder.stop();
-                micBtn.style.background = '';
+                document.getElementById('micBtn').style.background = '';
                 return;
             }
             try {
@@ -848,15 +954,14 @@
                     stream.getTracks().forEach(t => t.stop());
                 };
                 mediaRecorder.start();
-                micBtn.style.background = '#ff4757';
+                document.getElementById('micBtn').style.background = '#ff4757';
                 setTimeout(() => { if (mediaRecorder?.state === 'recording') mediaRecorder.stop(); }, 10000);
-            } catch(err) { alert('Mikrofon erişimi yok'); }
+            } catch { alert('Mikrofon izni gerekli'); }
         };
 
-        const videoBtn = document.getElementById('videoBtn');
-        const videoFileInput = document.getElementById('videoFileInput');
-        videoBtn.onclick = () => videoFileInput.click();
-        videoFileInput.onchange = (e) => {
+        // Video
+        document.getElementById('videoBtn').onclick = () => document.getElementById('videoFileInput').click();
+        document.getElementById('videoFileInput').onchange = e => {
             const file = e.target.files[0];
             if (file && file.size <= 50*1024*1024) {
                 const reader = new FileReader();
@@ -866,52 +971,29 @@
                 };
                 reader.readAsDataURL(file);
             } else alert('Video max 50MB');
-            videoFileInput.value = '';
+            e.target.value = '';
         };
 
-        function updateVideoUI(video) {
-            let container = document.getElementById('videoContainer');
-            if (!container) {
-                container = document.createElement('div');
-                container.id = 'videoContainer';
-                container.style.margin = '10px';
-                document.getElementById('chatMessages').before(container);
-            }
-            if (video.type === 'upload') {
-                container.innerHTML = `<div style="background:#000; border-radius:16px; padding:8px;"><video controls controlsList="nodownload" src="${video.url}" style="width:100%; border-radius:12px;" oncontextmenu="return false"></video><div style="text-align:center; margin-top:5px;">${escapeHtml(video.title)}</div><button id="closeVideoBtn" style="background:#ff4757; border:none; color:white; padding:4px 12px; border-radius:20px; margin-top:5px;">Kapat</button></div>`;
-                document.getElementById('closeVideoBtn')?.addEventListener('click', () => socket.emit('delete-video'));
-            }
-        }
-        function toggleVideoSection(visible) {
-            const vc = document.getElementById('videoContainer');
-            if (vc) vc.style.display = visible ? 'block' : 'none';
-        }
-
+        // Geri tuşu
         document.getElementById('backToGameBtn').onclick = () => {
             document.getElementById('chatScreen').classList.remove('active');
             document.getElementById('gameScreen').classList.add('active');
             resetGame();
         };
+
+        // Arka plana atınca koruma
         let wasInChat = false;
         document.addEventListener('visibilitychange', () => {
-            if (document.hidden) {
-                wasInChat = document.getElementById('chatScreen').classList.contains('active');
-            } else {
+            if (document.hidden) wasInChat = document.getElementById('chatScreen').classList.contains('active');
+            else {
                 if (wasInChat) {
                     document.getElementById('chatScreen').classList.remove('active');
                     document.getElementById('gameScreen').classList.add('active');
-                    resetGame();
-                    const pwd = prompt('Tekrar şifre girin:');
-                    if (pwd === 'efkaza7634') {
-                        const userName = localStorage.getItem('userName');
-                        const userPhoto = localStorage.getItem('userPhoto');
-                        connectAndJoin(pwd, userName, userPhoto);
-                    }
                 }
             }
         });
 
-        function escapeHtml(str) { return str?.replace(/[&<>]/g, m => ({ '&':'&amp;','<':'&lt;','>':'&gt;' }[m])) || ''; }
+        function escapeHtml(s) { return s?.replace(/[&<>]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[m])) || ''; }
         function urlBase64ToUint8Array(base64String) {
             const padding = '='.repeat((4 - base64String.length % 4) % 4);
             const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
