@@ -3,7 +3,6 @@ const http = require('http');
 const socketIo = require('socket.io');
 const path = require('path');
 const cors = require('cors');
-const multer = require('multer');
 const ImageKit = require('imagekit');
 const webpush = require('web-push');
 const fs = require('fs');
@@ -14,12 +13,14 @@ const app = express();
 const server = http.createServer(app);
 const PORT = process.env.PORT || 10000;
 
+// ImageKit yapılandırması
 const imagekit = new ImageKit({
     publicKey: process.env.IMAGEKIT_PUBLIC_KEY,
     privateKey: process.env.IMAGEKIT_PRIVATE_KEY,
     urlEndpoint: process.env.IMAGEKIT_URL_ENDPOINT
 });
 
+// Web push ayarları
 if (process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY) {
     webpush.setVapidDetails(
         'mailto:' + (process.env.VAPID_EMAIL || 'admin@example.com'),
@@ -33,33 +34,33 @@ app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
-// TEK ODA (şifre: efkaza7634)
+// TEK ODA (şifre: 31.12.2025)
 let activeRoom = {
     users: new Map(),
     messages: [],
     stickers: [],
     securePhotos: new Map(),
     video: null,
-    videoVisible: true,
     lastActivity: Date.now()
 };
 
 const pushSubscriptions = new Map();
 const lastNotificationTime = new Map();
-const MASTER_PASSWORD = 'efkaza7634';
+const MASTER_PASSWORD = '31.12.2025'; // Oda şifresi
 
 const TEMP_UPLOAD_DIR = path.join(os.tmpdir(), 'balloon-uploads');
 if (!fs.existsSync(TEMP_UPLOAD_DIR)) fs.mkdirSync(TEMP_UPLOAD_DIR, { recursive: true });
 
+// Bildirim sıklığı kontrolü (30 dk)
 function canSendNotification(deviceId) {
     const last = lastNotificationTime.get(deviceId);
-    if (!last) return true;
-    return (Date.now() - last) > 30 * 60 * 1000;
+    return !last || (Date.now() - last) > 30 * 60 * 1000;
 }
 function updateLastNotificationTime(deviceId) {
     lastNotificationTime.set(deviceId, Date.now());
 }
 
+// Tek kullanımlık fotoğrafları temizle
 setInterval(() => {
     const now = Date.now();
     for (const [id, data] of activeRoom.securePhotos.entries()) {
@@ -73,80 +74,79 @@ io.on('connection', (socket) => {
     console.log('✅ Bağlantı:', socket.id);
     let currentUser = null;
 
+    // Push aboneliği kaydet
     socket.on('subscribe-push', ({ deviceId, subscription }) => {
         if (subscription?.endpoint) {
             pushSubscriptions.set(deviceId, { subscription, expiresAt: Date.now() + 30*24*60*60*1000 });
         }
     });
 
-    socket.on('create-room', ({ userName, userPhoto, deviceId, password }) => {
-        if (!userName) return socket.emit('error', 'Kullanıcı adı gerekli');
-        if (password !== MASTER_PASSWORD) return socket.emit('error', 'Şifre yanlış! Oda kurulamadı.');
-        
-        if (activeRoom.users.size === 0) {
-            currentUser = { id: socket.id, deviceId, userName, userPhoto: userPhoto || null, isOwner: true };
-            activeRoom.users.set(socket.id, currentUser);
-            socket.join('main');
-            socket.emit('room-ready', { isOwner: true, messages: [], stickers: activeRoom.stickers, video: null, videoVisible: true });
-            updateUserList();
-            console.log(`🏠 Oda kuruldu (şifre: ${MASTER_PASSWORD}) - ${userName}`);
-        } else {
-            joinUser(socket, userName, userPhoto, deviceId);
-        }
-    });
-
-    socket.on('join-room', ({ userName, userPhoto, deviceId, password }) => {
-        if (!userName) return socket.emit('error', 'Kullanıcı adı gerekli');
+    // Odaya katılma (ilk katılımda oda oluşturulur)
+    socket.on('join-room', ({ nickname, pp, deviceId, password }) => {
+        if (!nickname) return socket.emit('error', 'Rumuz gerekli');
         if (password !== MASTER_PASSWORD) return socket.emit('error', 'Şifre yanlış!');
-        if (activeRoom.users.size === 0) return socket.emit('error', 'Henüz oda kurulmamış. Önce birisi oda kursun.');
-        joinUser(socket, userName, userPhoto, deviceId);
-    });
+        
+        // Kullanıcı zaten bağlı mı?
+        for (const [id, user] of activeRoom.users.entries()) {
+            if (user.deviceId === deviceId) {
+                // Eski bağlantıyı kaldır
+                activeRoom.users.delete(id);
+                io.to('main').emit('user-left', { nickname: user.nickname });
+                break;
+            }
+        }
 
-    function joinUser(socket, userName, userPhoto, deviceId) {
-        currentUser = { id: socket.id, deviceId, userName, userPhoto: userPhoto || null, isOwner: false };
+        currentUser = { id: socket.id, deviceId, nickname, pp, isOwner: activeRoom.users.size === 0 };
         activeRoom.users.set(socket.id, currentUser);
         socket.join('main');
+        
+        // Geçmiş mesajlar ve çıkartmalar
         socket.emit('room-ready', {
             messages: activeRoom.messages.slice(-100),
             stickers: activeRoom.stickers,
-            video: activeRoom.video,
-            videoVisible: activeRoom.videoVisible
+            video: activeRoom.video
         });
-        socket.to('main').emit('user-joined', { userName, userPhoto: currentUser.userPhoto });
+        
+        // Diğerlerine bildir
+        socket.to('main').emit('user-joined', { nickname, pp });
         updateUserList();
 
+        // Uzun süredir girmeyenlere bildirim gönder
         for (const [uid, user] of activeRoom.users.entries()) {
             if (uid !== socket.id && user.deviceId && canSendNotification(user.deviceId)) {
                 const sub = pushSubscriptions.get(user.deviceId);
                 if (sub) {
                     webpush.sendNotification(sub.subscription, JSON.stringify({
-                        title: '🎈 Balon Patlatmaca',
-                        body: 'Uzun süredir oyuna girmedin!',
-                        icon: '/icon.png',
-                        badge: '/badge.png'
+                        title: '💌 Mesajın var!',
+                        body: `${nickname} gizli odaya katıldı.`,
+                        icon: '/icon-192.png',
+                        badge: '/badge.png',
+                        vibrate: [200, 100, 200],
+                        requireInteraction: true
                     })).catch(e => console.log('Bildirim hatası:', e.message));
                     updateLastNotificationTime(user.deviceId);
                 }
             }
         }
-        console.log(`🚪 Katıldı: ${userName}`);
-    }
+        console.log(`🚪 ${nickname} katıldı`);
+    });
 
     function updateUserList() {
         const list = Array.from(activeRoom.users.values()).map(u => ({
-            id: u.id, userName: u.userName, isOwner: u.isOwner, userPhoto: u.userPhoto
+            id: u.id, nickname: u.nickname, pp: u.pp, isOwner: u.isOwner
         }));
         io.to('main').emit('user-list', list);
         io.to('main').emit('online-count', list.length);
     }
 
+    // Mesaj gönderme
     socket.on('send-message', (data) => {
         if (!currentUser) return;
         const { text, type, fileUrl, isSecure, replyTo } = data;
         const msg = {
             id: Date.now() + '-' + Math.random().toString(36).substr(2, 6),
-            userName: currentUser.userName,
-            userPhoto: currentUser.userPhoto,
+            nickname: currentUser.nickname,
+            pp: currentUser.pp,
             deviceId: currentUser.deviceId,
             text: text || '',
             type: type || 'text',
@@ -176,6 +176,7 @@ io.on('connection', (socket) => {
         if (activeRoom.messages.length > 200) activeRoom.messages = activeRoom.messages.slice(-200);
         io.to('main').emit('new-message', msg);
 
+        // Acil durum bombası
         if (text === '🚨') {
             const fakeScore = Math.floor(Math.random() * 20000) + 5000;
             io.to('main').emit('emergency-bomb', fakeScore);
@@ -186,6 +187,7 @@ io.on('connection', (socket) => {
         }
     });
 
+    // Yanıtla
     socket.on('reply-message', (data) => {
         if (!currentUser) return;
         const { replyToId, text, type, fileUrl, isSecure } = data;
@@ -193,15 +195,15 @@ io.on('connection', (socket) => {
         if (!replyMsg) return;
         const msg = {
             id: Date.now() + '-' + Math.random().toString(36).substr(2, 6),
-            userName: currentUser.userName,
-            userPhoto: currentUser.userPhoto,
+            nickname: currentUser.nickname,
+            pp: currentUser.pp,
             deviceId: currentUser.deviceId,
             text: text || '',
             type: type || 'text',
             fileUrl: fileUrl || null,
             isSecure: isSecure || false,
             secureId: null,
-            replyTo: { id: replyToId, userName: replyMsg.userName, text: replyMsg.text?.substring(0, 30) },
+            replyTo: { id: replyToId, nickname: replyMsg.nickname, text: replyMsg.text?.substring(0, 30) },
             reactions: [],
             time: new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })
         };
@@ -222,18 +224,21 @@ io.on('connection', (socket) => {
         io.to('main').emit('new-message', msg);
     });
 
+    // Reaksiyon ekleme
     socket.on('add-reaction', ({ messageId, emoji }) => {
         if (!currentUser) return;
         const msg = activeRoom.messages.find(m => m.id === messageId);
         if (msg) {
+            // Aynı emojiden aynı kullanıcı tekrar atmasın
             const existing = msg.reactions.find(r => r.userId === currentUser.deviceId && r.emoji === emoji);
             if (!existing) {
-                msg.reactions.push({ userId: currentUser.deviceId, emoji, userName: currentUser.userName });
+                msg.reactions.push({ userId: currentUser.deviceId, emoji, nickname: currentUser.nickname });
                 io.to('main').emit('reaction-updated', { messageId, reactions: msg.reactions });
             }
         }
     });
 
+    // Mesaj silme
     socket.on('delete-message', ({ messageId }) => {
         if (!currentUser) return;
         const idx = activeRoom.messages.findIndex(m => m.id === messageId && m.deviceId === currentUser.deviceId);
@@ -243,11 +248,13 @@ io.on('connection', (socket) => {
         }
     });
 
+    // Tek kullanımlık fotoğraf görüntüleme
     socket.on('view-secure-photo', ({ secureId }) => {
         const photo = activeRoom.securePhotos.get(secureId);
         if (photo) socket.emit('secure-photo-data', { imageUrl: photo.imageUrl });
     });
 
+    // Video yükleme
     socket.on('upload-video', async ({ fileBase64, title, mimeType }) => {
         if (!currentUser) return;
         const buffer = Buffer.from(fileBase64, 'base64');
@@ -271,6 +278,7 @@ io.on('connection', (socket) => {
         }
     });
 
+    // Video silme
     socket.on('delete-video', () => {
         if (currentUser?.isOwner) {
             activeRoom.video = null;
@@ -278,13 +286,7 @@ io.on('connection', (socket) => {
         }
     });
 
-    socket.on('toggle-video-visibility', () => {
-        if (currentUser?.isOwner) {
-            activeRoom.videoVisible = !activeRoom.videoVisible;
-            io.to('main').emit('video-visibility', activeRoom.videoVisible);
-        }
-    });
-
+    // Çıkartma kaydetme
     socket.on('save-stickers', ({ stickers }) => {
         if (currentUser) {
             activeRoom.stickers = stickers;
@@ -292,12 +294,13 @@ io.on('connection', (socket) => {
         }
     });
 
+    // Çıkartma gönderme
     socket.on('send-sticker', ({ stickerUrl }) => {
         if (currentUser) {
             const msg = {
                 id: Date.now() + '-' + Math.random().toString(36).substr(2, 6),
-                userName: currentUser.userName,
-                userPhoto: currentUser.userPhoto,
+                nickname: currentUser.nickname,
+                pp: currentUser.pp,
                 deviceId: currentUser.deviceId,
                 text: '',
                 type: 'sticker',
@@ -311,10 +314,11 @@ io.on('connection', (socket) => {
         }
     });
 
+    // Bağlantı koptu
     socket.on('disconnect', () => {
         if (currentUser) {
             activeRoom.users.delete(socket.id);
-            io.to('main').emit('user-left', { userName: currentUser.userName });
+            io.to('main').emit('user-left', { nickname: currentUser.nickname });
             updateUserList();
             if (activeRoom.users.size === 0) {
                 activeRoom.messages = [];
