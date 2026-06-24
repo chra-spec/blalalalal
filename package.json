@@ -1,20 +1,17 @@
 {
-  "name": "balloon-secret-chat",
-  "version": "3.0.0",
-  "description": "Balon Patlatmaca Kabuğu - Gizli Sohbet",
+  "name": "queen-battle",
+  "version": "2.0.0",
+  "description": "2 Kişilik Online Strateji Kart Oyunu - Kraliçe Savaşı",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "dev": "nodemon server.js"
   },
   "dependencies": {
     "express": "^4.18.2",
-    "socket.io": "^4.7.2",
-    "cors": "^2.8.5",
-    "dotenv": "^16.3.1",
-    "imagekit": "^4.1.1",
-    "web-push": "^3.6.6"
+    "socket.io": "^4.5.4"
   },
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=16.0.0"
   }
 }
