@@ -1,7 +1,7 @@
 {
-  "name": "queen-battle",
-  "version": "2.0.0",
-  "description": "2 Kişilik Online Strateji Kart Oyunu - Kraliçe Savaşı",
+  "name": "mega-chat-app",
+  "version": "3.0.0",
+  "description": "Devasa Özellikli Sohbet Uygulaması + Oyun Demosu",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
@@ -9,7 +9,8 @@
   },
   "dependencies": {
     "express": "^4.18.2",
-    "socket.io": "^4.5.4"
+    "socket.io": "^4.5.4",
+    "multer": "^1.4.5-lts.1"
   },
   "engines": {
     "node": ">=16.0.0"
