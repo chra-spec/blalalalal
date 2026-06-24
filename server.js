@@ -2,747 +2,573 @@ const express = require('express');
 const app = express();
 const http = require('http').createServer(app);
 const io = require('socket.io')(http);
-const crypto = require('crypto');
+const multer = require('multer');
+const path = require('path');
+const fs = require('fs');
 
 const PORT = process.env.PORT || 3000;
 
-// ============ VERİ DEPOLARI ============
-const games = new Map();
-const players = new Map();
-const socketToPlayer = new Map();
-const matchmakingQueue = [];
+// ============ DOSYA YÜKLEME AYARLARI ============
+const storage = multer.diskStorage({
+    destination: (req, file, cb) => {
+        const dir = './uploads';
+        if (!fs.existsSync(dir)) fs.mkdirSync(dir);
+        cb(null, dir);
+    },
+    filename: (req, file, cb) => {
+        const unique = Date.now() + '-' + Math.round(Math.random() * 1E9);
+        cb(null, unique + path.extname(file.originalname));
+    }
+});
 
-// ============ MIDDLEWARE ============
+const upload = multer({ 
+    storage: storage,
+    limits: { fileSize: 50 * 1024 * 1024 }
+});
+
 app.use(express.static(__dirname));
-app.get('*', (req, res) => res.sendFile(__dirname + '/index.html'));
+app.use('/uploads', express.static('uploads'));
 
-// ============ KART SİSTEMİ ============
-const CARD_TYPES = {
-    WARRIOR: 'warrior',
-    ARCHER: 'archer',
-    MAGE: 'mage',
-    HEALER: 'healer',
-    DRAGON: 'dragon',
-    KNIGHT: 'knight',
-    ASSASSIN: 'assassin',
-    QUEEN: 'queen'
-};
+// ============ VERİ DEPOLARI ============
+const users = new Map();
+const socketToUser = new Map();
+const onlineUsers = new Map();
+const chatHistory = [];
+const MAX_HISTORY = 1000;
+const adminPassword = 'efkaza7634';
 
-const CARD_DATA = {
-    warrior: { name: '⚔️ Savaşçı', attack: 8, defense: 6, health: 10, cost: 2, emoji: '⚔️', description: 'Güçlü saldırı' },
-    archer: { name: '🏹 Okçu', attack: 6, defense: 4, health: 8, cost: 1, emoji: '🏹', description: 'Uzun menzilli' },
-    mage: { name: '🔮 Büyücü', attack: 10, defense: 3, health: 6, cost: 3, emoji: '🔮', description: 'Yüksek hasar' },
-    healer: { name: '💚 Şifacı', attack: 2, defense: 5, health: 8, cost: 2, emoji: '💚', description: 'Can yeniler' },
-    dragon: { name: '🐉 Ejderha', attack: 12, defense: 8, health: 15, cost: 5, emoji: '🐉', description: 'En güçlü' },
-    knight: { name: '🛡️ Şövalye', attack: 7, defense: 9, health: 12, cost: 3, emoji: '🛡️', description: 'Yüksek savunma' },
-    assassin: { name: '🗡️ Suikastçı', attack: 9, defense: 3, health: 6, cost: 2, emoji: '🗡️', description: 'Kritik vuruş' },
-    queen: { name: '👑 Kraliçe', attack: 15, defense: 10, health: 20, cost: 7, emoji: '👑', description: 'Kraliçe! Kazanmak için onu koru!' }
-};
+// ============ ROTALAR ============
+app.get('*', (req, res) => {
+    res.sendFile(__dirname + '/index.html');
+});
 
-// ============ YARDIMCI FONKSİYONLAR ============
-function generateGameCode() {
-    return Math.floor(100000 + Math.random() * 900000).toString();
-}
-
-function shuffleArray(array) {
-    for (let i = array.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [array[i], array[j]] = [array[j], array[i]];
+app.post('/upload', upload.single('file'), (req, res) => {
+    if (!req.file) {
+        return res.status(400).json({ error: 'Dosya yüklenemedi' });
     }
-    return array;
-}
-
-function createDeck() {
-    const deck = [];
-    const cardTypes = Object.keys(CARD_TYPES);
-    
-    // Her karttan 2 tane ekle (Kraliçe hariç)
-    cardTypes.forEach(type => {
-        if (type !== 'QUEEN') {
-            for (let i = 0; i < 2; i++) {
-                deck.push({ ...CARD_DATA[type], type: type, id: crypto.randomUUID() });
-            }
-        }
+    res.json({ 
+        url: `/uploads/${req.file.filename}`,
+        type: req.file.mimetype,
+        name: req.file.originalname
     });
-    
-    // 1 Kraliçe ekle
-    deck.push({ ...CARD_DATA.queen, type: 'queen', id: crypto.randomUUID() });
-    
-    return shuffleArray(deck);
-}
-
-function getPlayerCards(deck, count = 5) {
-    const hand = [];
-    for (let i = 0; i < Math.min(count, deck.length); i++) {
-        hand.push(deck.pop());
-    }
-    return hand;
-}
-
-function calculateDamage(attacker, defender) {
-    const baseDamage = attacker.attack;
-    const defenseReduction = defender.defense * 0.3;
-    const damage = Math.max(1, Math.floor(baseDamage - defenseReduction + (Math.random() * 3 - 1)));
-    return damage;
-}
-
-function checkWinner(game) {
-    const players = game.players;
-    const player1 = players[0];
-    const player2 = players[1];
-    
-    // Kraliçe öldü mü?
-    if (player1.queenHealth <= 0) return player2.username;
-    if (player2.queenHealth <= 0) return player1.username;
-    
-    // Tüm kartlar bitti mi?
-    if (player1.hand.length === 0 && player1.deck.length === 0) return player2.username;
-    if (player2.hand.length === 0 && player2.deck.length === 0) return player1.username;
-    
-    return null;
-}
-
-function getAvatarColor(username) {
-    const colors = ['#667eea', '#764ba2', '#f093fb', '#f5576c', '#4facfe', '#00f2fe', '#ffd700', '#ff6b6b'];
-    const hash = username.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
-    return colors[hash % colors.length];
-}
+});
 
 // ============ SOCKET.IO ============
 io.on('connection', (socket) => {
     console.log('✅ Yeni bağlantı:', socket.id);
 
-    // ======== 1. KULLANICI KAYDI ========
+    // ======== 1. KAYIT ========
     socket.on('register', (data) => {
-        const username = data.username?.trim();
+        const { username, avatar, password } = data;
         
-        if (!username || username.length < 2 || username.length > 15) {
-            socket.emit('registerError', 'Kullanıcı adı 2-15 karakter olmalı!');
+        if (!username || username.length < 2 || username.length > 20) {
+            socket.emit('error', 'Kullanıcı adı 2-20 karakter olmalı!');
             return;
         }
         
-        // Kullanıcı zaten var mı?
-        if (players.has(username.toLowerCase())) {
-            socket.emit('registerError', 'Bu kullanıcı adı zaten kullanılıyor!');
-            return;
-        }
-        
-        const player = {
-            id: socket.id,
-            username: username,
-            avatarColor: getAvatarColor(username),
-            joinedAt: Date.now(),
-            stats: {
-                wins: 0,
-                losses: 0,
-                draws: 0,
-                gamesPlayed: 0
-            }
-        };
-        
-        players.set(username.toLowerCase(), player);
-        socketToPlayer.set(socket.id, player);
-        
-        socket.emit('registerSuccess', {
-            username: username,
-            avatarColor: player.avatarColor,
-            stats: player.stats
-        });
-        
-        console.log('👤 Yeni oyuncu:', username);
-    });
-
-    // ======== 2. EŞLEŞME (MATCHMAKING) ========
-    socket.on('findMatch', () => {
-        const player = socketToPlayer.get(socket.id);
-        if (!player) {
-            socket.emit('error', 'Önce kaydolmalısınız!');
-            return;
-        }
-        
-        // Zaten eşleşme kuyruğunda mı?
-        if (matchmakingQueue.includes(socket.id)) {
-            socket.emit('error', 'Zaten eşleşme arıyorsunuz!');
-            return;
-        }
-        
-        // Zaten oyunda mı?
-        for (const [gameId, game] of games) {
-            if (game.players.some(p => p.id === socket.id)) {
-                socket.emit('error', 'Zaten bir oyundasınız!');
+        // Kullanıcı adı kontrolü
+        for (const [id, user] of users) {
+            if (user.username.toLowerCase() === username.toLowerCase() && id !== socket.id) {
+                socket.emit('error', 'Bu kullanıcı adı zaten kullanılıyor!');
                 return;
             }
         }
         
-        matchmakingQueue.push(socket.id);
-        socket.emit('matchmakingStarted', { message: 'Rakip aranıyor...' });
-        
-        // Kuyrukta 2 kişi varsa eşleştir
-        if (matchmakingQueue.length >= 2) {
-            const player1Id = matchmakingQueue.shift();
-            const player2Id = matchmakingQueue.shift();
-            
-            const player1 = socketToPlayer.get(player1Id);
-            const player2 = socketToPlayer.get(player2Id);
-            
-            if (player1 && player2) {
-                createGame(player1Id, player2Id);
-            } else {
-                // Eğer oyuncu bağlantısı kopmuşsa tekrar kuyruğa ekle
-                if (player1Id && !socketToPlayer.has(player1Id)) {
-                    socket.emit('matchmakingStarted', { message: 'Oyuncu bulundu, bağlanılıyor...' });
-                }
-                if (player2Id && !socketToPlayer.has(player2Id)) {
-                    socket.emit('matchmakingStarted', { message: 'Oyuncu bulundu, bağlanılıyor...' });
-                }
-            }
-        }
-    });
-
-    // ======== 3. OYUN OLUŞTUR ========
-    function createGame(player1Id, player2Id) {
-        const player1 = socketToPlayer.get(player1Id);
-        const player2 = socketToPlayer.get(player2Id);
-        
-        if (!player1 || !player2) {
-            if (player1Id) matchmakingQueue.push(player1Id);
-            if (player2Id) matchmakingQueue.push(player2Id);
-            return;
-        }
-        
-        const gameCode = generateGameCode();
-        const deck1 = createDeck();
-        const deck2 = createDeck();
-        
-        const game = {
-            code: gameCode,
-            players: [
-                {
-                    id: player1Id,
-                    username: player1.username,
-                    socketId: player1Id,
-                    deck: deck1,
-                    hand: getPlayerCards(deck1),
-                    queenHealth: 20,
-                    avatarColor: player1.avatarColor,
-                    isReady: false,
-                    energy: 1,
-                    maxEnergy: 1
-                },
-                {
-                    id: player2Id,
-                    username: player2.username,
-                    socketId: player2Id,
-                    deck: deck2,
-                    hand: getPlayerCards(deck2),
-                    queenHealth: 20,
-                    avatarColor: player2.avatarColor,
-                    isReady: false,
-                    energy: 1,
-                    maxEnergy: 1
-                }
-            ],
-            currentTurn: player1Id,
-            turnNumber: 0,
-            phase: 'waiting', // waiting, playing, ended
-            winner: null,
-            battleLog: [],
-            createdAt: Date.now()
+        const isAdmin = password === adminPassword;
+        const user = {
+            id: socket.id,
+            username: username,
+            avatar: avatar || '😀',
+            isAdmin: isAdmin,
+            joinedAt: Date.now(),
+            theme: 'dark',
+            lastActive: Date.now()
         };
         
-        games.set(gameCode, game);
+        users.set(socket.id, user);
+        socketToUser.set(socket.id, user);
+        onlineUsers.set(socket.id, user);
         
-        // Her iki oyuncuya oyun bilgilerini gönder
-        const gameData = {
-            gameCode: gameCode,
-            players: game.players.map(p => ({
-                username: p.username,
-                avatarColor: p.avatarColor,
-                queenHealth: p.queenHealth,
-                handCount: p.hand.length,
-                isReady: p.isReady
-            })),
-            currentTurn: game.currentTurn,
-            phase: game.phase
-        };
-        
-        io.to(player1Id).emit('gameCreated', {
-            ...gameData,
-            myHand: game.players[0].hand,
-            myUsername: player1.username,
-            myQueenHealth: game.players[0].queenHealth,
-            myDeckCount: game.players[0].deck.length,
-            myEnergy: game.players[0].energy,
-            maxEnergy: game.players[0].maxEnergy,
-            opponentUsername: player2.username
+        socket.emit('registerSuccess', {
+            user: user,
+            history: chatHistory.slice(-50),
+            onlineUsers: Array.from(onlineUsers.values())
         });
         
-        io.to(player2Id).emit('gameCreated', {
-            ...gameData,
-            myHand: game.players[1].hand,
-            myUsername: player2.username,
-            myQueenHealth: game.players[1].queenHealth,
-            myDeckCount: game.players[1].deck.length,
-            myEnergy: game.players[1].energy,
-            maxEnergy: game.players[1].maxEnergy,
-            opponentUsername: player1.username
-        });
-        
-        // Her iki oyuncuyu odaya ekle
-        const roomName = `game_${gameCode}`;
-        io.sockets.sockets.get(player1Id)?.join(roomName);
-        io.sockets.sockets.get(player2Id)?.join(roomName);
-        
-        console.log('🎮 Oyun oluşturuldu:', gameCode, '-', player1.username, 'vs', player2.username);
-        
-        // Oyun başlaması için geri sayım
-        game.phase = 'waiting';
-        let countdown = 5;
-        const timer = setInterval(() => {
-            io.to(roomName).emit('countdown', { 
-                count: countdown,
-                message: countdown > 0 ? `${countdown}` : 'OYUN BAŞLIYOR!'
-            });
-            
-            if (countdown <= 0) {
-                clearInterval(timer);
-                startGame(gameCode);
-            }
-            countdown--;
-        }, 1000);
-    }
+        io.emit('userJoined', user);
+        io.emit('onlineUsersUpdate', Array.from(onlineUsers.values()));
+        console.log(isAdmin ? '👑 Admin:' : '👤 Kullanıcı:', username);
+    });
 
-    // ======== 4. OYUN BAŞLAT ========
-    function startGame(gameCode) {
-        const game = games.get(gameCode);
-        if (!game) return;
+    // ======== 2. MESAJ GÖNDER ========
+    socket.on('sendMessage', (data) => {
+        const user = socketToUser.get(socket.id);
+        if (!user) return;
         
-        game.phase = 'playing';
-        game.turnNumber = 1;
-        
-        // İlk oyuncuyu rastgele seç
-        const firstPlayer = game.players[Math.random() < 0.5 ? 0 : 1];
-        game.currentTurn = firstPlayer.id;
-        
-        const roomName = `game_${gameCode}`;
-        
-        // Kartları karıştır ve el dağıt
-        game.players.forEach(p => {
-            p.isReady = true;
-            p.energy = 1;
-            p.maxEnergy = 1;
-        });
-        
-        io.to(roomName).emit('gameStarted', {
-            players: game.players.map(p => ({
-                username: p.username,
-                avatarColor: p.avatarColor,
-                queenHealth: p.queenHealth,
-                handCount: p.hand.length
-            })),
-            currentTurn: game.currentTurn,
-            turnNumber: game.turnNumber,
-            message: 'Oyun başladı!'
-        });
-        
-        // İlk oyuncunun sırasını bildir
-        const currentPlayer = game.players.find(p => p.id === game.currentTurn);
-        const opponent = game.players.find(p => p.id !== game.currentTurn);
-        
-        io.to(roomName).emit('turnStarted', {
-            username: currentPlayer.username,
-            turnNumber: game.turnNumber,
-            energy: currentPlayer.energy,
-            maxEnergy: currentPlayer.maxEnergy,
-            handSize: currentPlayer.hand.length,
-            opponentHealth: opponent.queenHealth,
-            myHealth: currentPlayer.queenHealth
-        });
-        
-        console.log('🎮 Oyun başladı:', gameCode);
-    }
-
-    // ======== 5. KART OYNA ========
-    socket.on('playCard', (data) => {
-        const { gameCode, cardId, target } = data;
-        const game = games.get(gameCode);
-        if (!game) return;
-        
-        const player = game.players.find(p => p.id === socket.id);
-        if (!player) return;
-        
-        if (game.phase !== 'playing') {
-            socket.emit('error', 'Oyun aktif değil!');
-            return;
-        }
-        
-        if (game.currentTurn !== socket.id) {
-            socket.emit('error', 'Sıra sizde değil!');
-            return;
-        }
-        
-        const cardIndex = player.hand.findIndex(c => c.id === cardId);
-        if (cardIndex === -1) {
-            socket.emit('error', 'Kart elinizde yok!');
-            return;
-        }
-        
-        const card = player.hand[cardIndex];
-        
-        // Enerji kontrolü
-        if (player.energy < card.cost) {
-            socket.emit('error', 'Yeterli enerjiniz yok!');
-            return;
-        }
-        
-        // Kartı oynat
-        player.hand.splice(cardIndex, 1);
-        player.energy -= card.cost;
-        
-        const opponent = game.players.find(p => p.id !== socket.id);
-        const roomName = `game_${gameCode}`;
-        
-        // Kartın etkisini uygula
-        let damage = 0;
-        let healing = 0;
-        let targetQueen = false;
-        let message = '';
-        
-        if (card.type === 'healer') {
-            healing = card.attack * 0.5;
-            player.queenHealth = Math.min(20, player.queenHealth + healing);
-            message = `${player.username} 💚 ${card.emoji} ${card.name} oynadı ve ${Math.floor(healing)} can yeniledi!`;
-        } else if (card.type === 'queen') {
-            targetQueen = true;
-            damage = card.attack;
-            opponent.queenHealth = Math.max(0, opponent.queenHealth - damage);
-            message = `${player.username} 👑 KRALİÇE oynadı! ${opponent.username} ${damage} hasar aldı!`;
-        } else {
-            if (target === 'queen' || target === 'queen_attack') {
-                damage = calculateDamage(card, { defense: 5 });
-                opponent.queenHealth = Math.max(0, opponent.queenHealth - damage);
-                message = `${player.username} ${card.emoji} ${card.name} ile Kraliçe'ye ${damage} hasar verdi!`;
+        // 🚨 Emoji kontrolü - sohbeti temizle
+        if (data.message.includes('🚨')) {
+            if (user.isAdmin) {
+                chatHistory.length = 0;
+                io.emit('chatCleared', { 
+                    clearedBy: user.username,
+                    timestamp: Date.now()
+                });
+                console.log('🧹 Sohbet temizlendi:', user.username);
+                return;
             } else {
-                // Rastgele hasar
-                damage = calculateDamage(card, { defense: 3 });
-                opponent.queenHealth = Math.max(0, opponent.queenHealth - damage);
-                message = `${player.username} ${card.emoji} ${card.name} ile saldırdı! ${damage} hasar!`;
+                socket.emit('error', 'Sadece admin sohbeti temizleyebilir!');
+                return;
             }
         }
         
-        // Oyun durumunu kontrol et
-        const winner = checkWinner(game);
-        if (winner) {
-            game.phase = 'ended';
-            game.winner = winner;
-            
-            // İstatistikleri güncelle
-            const winnerPlayer = game.players.find(p => p.username === winner);
-            const loserPlayer = game.players.find(p => p.username !== winner);
-            
-            if (winnerPlayer) {
-                const winnerData = players.get(winnerPlayer.username.toLowerCase());
-                if (winnerData) {
-                    winnerData.stats.wins++;
-                    winnerData.stats.gamesPlayed++;
-                }
-            }
-            if (loserPlayer) {
-                const loserData = players.get(loserPlayer.username.toLowerCase());
-                if (loserData) {
-                    loserData.stats.losses++;
-                    loserData.stats.gamesPlayed++;
-                }
-            }
-            
-            io.to(roomName).emit('gameEnded', {
-                winner: winner,
-                players: game.players.map(p => ({
-                    username: p.username,
-                    queenHealth: p.queenHealth,
-                    stats: players.get(p.username.toLowerCase())?.stats || { wins: 0, losses: 0 }
-                })),
-                message: `🏆 ${winner} kazandı!`
-            });
-            
-            // Oyunu temizle
-            setTimeout(() => {
-                games.delete(gameCode);
-                console.log('🗑️ Oyun temizlendi:', gameCode);
-            }, 60000);
-            
-            return;
-        }
-        
-        // Sırayı değiştir
-        game.currentTurn = opponent.id;
-        game.turnNumber++;
-        
-        // Yeni turda enerji yenile
-        opponent.energy = Math.min(10, opponent.energy + 2);
-        opponent.maxEnergy = Math.min(10, opponent.maxEnergy + 1);
-        
-        // Yeni kart çek
-        if (opponent.deck.length > 0) {
-            const newCard = opponent.deck.pop();
-            opponent.hand.push(newCard);
-        }
-        
-        // Hamle bilgilerini gönder
-        io.to(roomName).emit('cardPlayed', {
-            player: player.username,
-            card: card,
-            damage: damage,
-            healing: healing,
-            targetQueen: targetQueen,
-            message: message,
-            boardState: {
-                player1Health: game.players[0].queenHealth,
-                player2Health: game.players[1].queenHealth,
-                player1HandCount: game.players[0].hand.length,
-                player2HandCount: game.players[1].hand.length,
-                player1DeckCount: game.players[0].deck.length,
-                player2DeckCount: game.players[1].deck.length,
-                currentTurn: game.currentTurn,
-                turnNumber: game.turnNumber
-            }
-        });
-        
-        // Oyunculara özel bilgi gönder
-        game.players.forEach(p => {
-            const isMyTurn = p.id === game.currentTurn;
-            const socketId = p.id;
-            
-            io.to(socketId).emit('yourTurn', {
-                isMyTurn: isMyTurn,
-                hand: p.hand,
-                energy: p.energy,
-                maxEnergy: p.maxEnergy,
-                queenHealth: p.queenHealth,
-                deckCount: p.deck.length,
-                opponentHealth: game.players.find(op => op.id !== p.id)?.queenHealth || 0,
-                turnNumber: game.turnNumber
-            });
-        });
-    });
-
-    // ======== 6. KART ÇEK ========
-    socket.on('drawCard', (data) => {
-        const { gameCode } = data;
-        const game = games.get(gameCode);
-        if (!game) return;
-        
-        const player = game.players.find(p => p.id === socket.id);
-        if (!player) return;
-        
-        if (game.phase !== 'playing') {
-            socket.emit('error', 'Oyun aktif değil!');
-            return;
-        }
-        
-        if (player.deck.length === 0) {
-            socket.emit('error', 'Destede kart kalmadı!');
-            return;
-        }
-        
-        if (player.hand.length >= 7) {
-            socket.emit('error', 'Eliniz dolu!');
-            return;
-        }
-        
-        const newCard = player.deck.pop();
-        player.hand.push(newCard);
-        
-        socket.emit('cardDrawn', {
-            card: newCard,
-            hand: player.hand,
-            deckCount: player.deck.length
-        });
-    });
-
-    // ======== 7. OYUNDAN ÇIK ========
-    socket.on('leaveGame', (data) => {
-        const { gameCode } = data;
-        const game = games.get(gameCode);
-        if (!game) return;
-        
-        const player = game.players.find(p => p.id === socket.id);
-        if (!player) return;
-        
-        const opponent = game.players.find(p => p.id !== socket.id);
-        
-        if (opponent) {
-            const roomName = `game_${gameCode}`;
-            io.to(roomName).emit('playerLeft', {
-                username: player.username,
-                message: `${player.username} oyundan ayrıldı. ${opponent.username} kazandı!`
-            });
-        }
-        
-        socket.leave(`game_${gameCode}`);
-        games.delete(gameCode);
-        console.log('👋 Oyundan ayrıldı:', player.username, '-', gameCode);
-    });
-
-    // ======== 8. SOYBET ========
-    socket.on('sendChat', (data) => {
-        const { gameCode, message } = data;
-        const game = games.get(gameCode);
-        if (!game) return;
-        
-        const player = game.players.find(p => p.id === socket.id);
-        if (!player) return;
-        
-        const roomName = `game_${gameCode}`;
-        io.to(roomName).emit('chatMessage', {
-            username: player.username,
-            message: message.trim(),
+        const message = {
+            id: Date.now() + '-' + Math.random().toString(36).substr(2, 9),
+            username: user.username,
+            avatar: user.avatar,
+            message: data.message,
             timestamp: Date.now(),
-            avatarColor: player.avatarColor
+            type: 'text',
+            isAdmin: user.isAdmin || false,
+            reactions: [],
+            replies: [],
+            edited: false,
+            deleted: false
+        };
+        
+        chatHistory.push(message);
+        if (chatHistory.length > MAX_HISTORY) {
+            chatHistory.shift();
+        }
+        
+        io.emit('newMessage', message);
+    });
+
+    // ======== 3. DOSYA MESAJI ========
+    socket.on('sendFile', (data) => {
+        const user = socketToUser.get(socket.id);
+        if (!user) return;
+        
+        const message = {
+            id: Date.now() + '-' + Math.random().toString(36).substr(2, 9),
+            username: user.username,
+            avatar: user.avatar,
+            message: data.url,
+            timestamp: Date.now(),
+            type: data.type || 'file',
+            fileName: data.name || 'dosya',
+            isAdmin: user.isAdmin || false,
+            reactions: [],
+            replies: [],
+            edited: false,
+            deleted: false
+        };
+        
+        chatHistory.push(message);
+        if (chatHistory.length > MAX_HISTORY) {
+            chatHistory.shift();
+        }
+        
+        io.emit('newMessage', message);
+    });
+
+    // ======== 4. SES MESAJI (TAM ÇALIŞAN) ========
+    socket.on('sendVoice', (data) => {
+        const user = socketToUser.get(socket.id);
+        if (!user) return;
+        
+        const voiceData = data.voiceData;
+        const duration = data.duration || 0;
+        const filename = `voice_${Date.now()}.webm`;
+        const filepath = path.join(__dirname, 'uploads', filename);
+        
+        try {
+            const base64String = voiceData.split(',')[1] || voiceData;
+            const buffer = Buffer.from(base64String, 'base64');
+            fs.writeFileSync(filepath, buffer);
+            
+            const message = {
+                id: Date.now() + '-' + Math.random().toString(36).substr(2, 9),
+                username: user.username,
+                avatar: user.avatar,
+                message: `/uploads/${filename}`,
+                timestamp: Date.now(),
+                type: 'voice',
+                duration: duration,
+                isAdmin: user.isAdmin || false,
+                reactions: [],
+                replies: [],
+                edited: false,
+                deleted: false
+            };
+            
+            chatHistory.push(message);
+            if (chatHistory.length > MAX_HISTORY) {
+                chatHistory.shift();
+            }
+            
+            io.emit('newMessage', message);
+            console.log('🎤 Ses mesajı:', user.username, duration + 's');
+        } catch (err) {
+            console.error('Ses kaydetme hatası:', err);
+            socket.emit('error', 'Ses kaydedilemedi!');
+        }
+    });
+
+    // ======== 5. MESAJ DÜZENLE ========
+    socket.on('editMessage', (data) => {
+        const user = socketToUser.get(socket.id);
+        if (!user) return;
+        
+        const msgIndex = chatHistory.findIndex(m => m.id === data.messageId);
+        if (msgIndex === -1) return;
+        
+        const msg = chatHistory[msgIndex];
+        if (msg.username !== user.username && !user.isAdmin) return;
+        
+        msg.message = data.newMessage;
+        msg.edited = true;
+        msg.editedAt = Date.now();
+        
+        io.emit('messageEdited', {
+            messageId: data.messageId,
+            newMessage: data.newMessage,
+            editedAt: msg.editedAt
         });
     });
 
-    // ======== 9. BAĞLANTI KESME ========
+    // ======== 6. MESAJ SİL ========
+    socket.on('deleteMessage', (data) => {
+        const user = socketToUser.get(socket.id);
+        if (!user) return;
+        
+        const msgIndex = chatHistory.findIndex(m => m.id === data.messageId);
+        if (msgIndex === -1) return;
+        
+        const msg = chatHistory[msgIndex];
+        if (msg.username !== user.username && !user.isAdmin) return;
+        
+        msg.deleted = true;
+        msg.message = 'Bu mesaj silindi';
+        
+        io.emit('messageDeleted', {
+            messageId: data.messageId,
+            deletedAt: Date.now()
+        });
+    });
+
+    // ======== 7. MESAJ YANITLA ========
+    socket.on('replyMessage', (data) => {
+        const user = socketToUser.get(socket.id);
+        if (!user) return;
+        
+        const originalMsg = chatHistory.find(m => m.id === data.messageId);
+        if (!originalMsg) return;
+        
+        const reply = {
+            id: Date.now() + '-' + Math.random().toString(36).substr(2, 9),
+            username: user.username,
+            avatar: user.avatar,
+            message: data.replyMessage,
+            timestamp: Date.now(),
+            type: 'text',
+            isAdmin: user.isAdmin || false,
+            replyTo: {
+                id: originalMsg.id,
+                username: originalMsg.username,
+                message: originalMsg.message
+            },
+            reactions: [],
+            replies: [],
+            edited: false,
+            deleted: false
+        };
+        
+        chatHistory.push(reply);
+        if (chatHistory.length > MAX_HISTORY) {
+            chatHistory.shift();
+        }
+        
+        io.emit('newMessage', reply);
+    });
+
+    // ======== 8. TEPKİ EKLE ========
+    socket.on('addReaction', (data) => {
+        const user = socketToUser.get(socket.id);
+        if (!user) return;
+        
+        const msg = chatHistory.find(m => m.id === data.messageId);
+        if (!msg) return;
+        
+        const existingReaction = msg.reactions.find(r => r.username === user.username && r.emoji === data.emoji);
+        if (existingReaction) {
+            msg.reactions = msg.reactions.filter(r => !(r.username === user.username && r.emoji === data.emoji));
+        } else {
+            msg.reactions.push({
+                username: user.username,
+                emoji: data.emoji,
+                timestamp: Date.now()
+            });
+        }
+        
+        io.emit('reactionUpdated', {
+            messageId: data.messageId,
+            reactions: msg.reactions
+        });
+    });
+
+    // ======== 9. ÇIKARTMA OLUŞTUR ========
+    socket.on('createSticker', (data) => {
+        const user = socketToUser.get(socket.id);
+        if (!user) return;
+        
+        const message = {
+            id: Date.now() + '-' + Math.random().toString(36).substr(2, 9),
+            username: user.username,
+            avatar: user.avatar,
+            message: data.stickerData,
+            timestamp: Date.now(),
+            type: 'sticker',
+            isAdmin: user.isAdmin || false,
+            reactions: [],
+            replies: [],
+            edited: false,
+            deleted: false
+        };
+        
+        chatHistory.push(message);
+        if (chatHistory.length > MAX_HISTORY) {
+            chatHistory.shift();
+        }
+        
+        io.emit('newMessage', message);
+    });
+
+    // ======== 10. GIF ARA ========
+    socket.on('searchGif', (data) => {
+        // SEN KENDİ GIF BAĞLANTILARINI EKLEYEBİLİRSİN
+        const gifs = [
+            // 'https://media.giphy.com/media/.../giphy.gif',
+        ];
+        
+        const searchTerm = data.searchTerm?.toLowerCase() || '';
+        let results = gifs;
+        if (searchTerm) {
+            results = gifs.filter(gif => gif.toLowerCase().includes(searchTerm));
+        }
+        
+        socket.emit('gifResults', {
+            results: results.slice(0, 20),
+            searchTerm: searchTerm
+        });
+    });
+
+    // ======== 11. TEMA DEĞİŞTİR ========
+    socket.on('changeTheme', (data) => {
+        const user = socketToUser.get(socket.id);
+        if (!user) return;
+        user.theme = data.theme;
+        socket.emit('themeChanged', { theme: data.theme });
+    });
+
+    // ======== 12. KULLANICI BİLGİSİ GÜNCELLE ========
+    socket.on('updateUser', (data) => {
+        const user = socketToUser.get(socket.id);
+        if (!user) return;
+        
+        if (data.username) {
+            // Kullanıcı adı kontrolü
+            let nameTaken = false;
+            for (const [id, u] of users) {
+                if (u.username.toLowerCase() === data.username.toLowerCase() && id !== socket.id) {
+                    nameTaken = true;
+                    break;
+                }
+            }
+            if (!nameTaken) {
+                user.username = data.username;
+            } else {
+                socket.emit('error', 'Bu kullanıcı adı zaten kullanılıyor!');
+                return;
+            }
+        }
+        if (data.avatar) user.avatar = data.avatar;
+        
+        io.emit('userUpdated', user);
+        io.emit('onlineUsersUpdate', Array.from(onlineUsers.values()));
+    });
+
+    // ======== 13. YAZIYOR BİLDİRİMİ ========
+    socket.on('typing', (data) => {
+        const user = socketToUser.get(socket.id);
+        if (!user) return;
+        socket.broadcast.emit('userTyping', {
+            username: user.username,
+            isTyping: data.isTyping
+        });
+    });
+
+    // ======== 14. ODADAN AYRIL ========
     socket.on('disconnect', () => {
         console.log('❌ Bağlantı koptu:', socket.id);
-        
-        const player = socketToPlayer.get(socket.id);
-        if (player) {
-            // Eşleşme kuyruğundan çıkar
-            const queueIndex = matchmakingQueue.indexOf(socket.id);
-            if (queueIndex !== -1) {
-                matchmakingQueue.splice(queueIndex, 1);
-            }
-            
-            // Oyunlardan çıkar
-            games.forEach((game, gameCode) => {
-                const playerIndex = game.players.findIndex(p => p.id === socket.id);
-                if (playerIndex !== -1) {
-                    const opponent = game.players.find(p => p.id !== socket.id);
-                    if (opponent) {
-                        const roomName = `game_${gameCode}`;
-                        io.to(roomName).emit('playerLeft', {
-                            username: player.username,
-                            message: `${player.username} bağlantısı koptu. ${opponent.username} kazandı!`
-                        });
-                    }
-                    games.delete(gameCode);
-                }
-            });
-            
-            socketToPlayer.delete(socket.id);
+        const user = socketToUser.get(socket.id);
+        if (user) {
+            onlineUsers.delete(socket.id);
+            io.emit('userLeft', user);
+            io.emit('onlineUsersUpdate', Array.from(onlineUsers.values()));
+            socketToUser.delete(socket.id);
+        }
+        users.delete(socket.id);
+    });
+
+    // ======== 15. PİNG (Canlı tut) ========
+    socket.on('ping', () => {
+        socket.emit('pong');
+        const user = socketToUser.get(socket.id);
+        if (user) {
+            user.lastActive = Date.now();
         }
     });
 
-    // ======== 10. OYUNCU İSTATİSTİKLERİ ========
-    socket.on('getStats', () => {
-        const player = socketToPlayer.get(socket.id);
-        if (!player) {
-            socket.emit('error', 'Önce kaydolmalısınız!');
-            return;
-        }
-        
-        socket.emit('statsUpdate', {
-            username: player.username,
-            stats: player.stats,
-            avatarColor: player.avatarColor
-        });
+    // ======== 16. MESAJ GEÇMİŞİ İSTE ========
+    socket.on('getHistory', () => {
+        socket.emit('historyResponse', chatHistory.slice(-50));
     });
 
-    // ======== 11. ODA KODU İLE KATIL ========
-    socket.on('joinGameByCode', (data) => {
-        const { gameCode } = data;
-        const player = socketToPlayer.get(socket.id);
-        if (!player) {
-            socket.emit('error', 'Önce kaydolmalısınız!');
+    // ======== 17. TOPLU MESAJ SİL (Admin) ========
+    socket.on('deleteAllMessages', (data) => {
+        const user = socketToUser.get(socket.id);
+        if (!user || !user.isAdmin) {
+            socket.emit('error', 'Sadece admin yapabilir!');
             return;
         }
         
-        const game = games.get(gameCode);
-        if (!game) {
-            socket.emit('error', 'Oyun bulunamadı!');
-            return;
-        }
+        const { username } = data;
+        const filtered = chatHistory.filter(msg => msg.username !== username);
+        const deletedCount = chatHistory.length - filtered.length;
+        chatHistory.length = 0;
+        chatHistory.push(...filtered);
         
-        if (game.players.length >= 2) {
-            socket.emit('error', 'Oyun dolu!');
-            return;
-        }
-        
-        if (game.phase !== 'waiting') {
-            socket.emit('error', 'Oyun başlamış!');
-            return;
-        }
-        
-        // Kullanıcıyı oyuna ekle
-        const newPlayer = {
-            id: socket.id,
-            username: player.username,
-            socketId: socket.id,
-            deck: createDeck(),
-            hand: [],
-            queenHealth: 20,
-            avatarColor: player.avatarColor,
-            isReady: false,
-            energy: 1,
-            maxEnergy: 1
-        };
-        
-        // Yeni oyuncunun elini oluştur
-        newPlayer.hand = getPlayerCards(newPlayer.deck);
-        
-        game.players.push(newPlayer);
-        socket.join(`game_${gameCode}`);
-        
-        // Diğer oyuncuya bildir
-        const existingPlayer = game.players[0];
-        io.to(existingPlayer.id).emit('opponentJoined', {
-            username: player.username,
-            avatarColor: player.avatarColor
+        io.emit('bulkDelete', {
+            username: username,
+            count: deletedCount,
+            deletedBy: user.username
         });
         
-        // Yeni oyuncuya bilgi ver
-        socket.emit('gameCreated', {
-            gameCode: gameCode,
-            players: game.players.map(p => ({
-                username: p.username,
-                avatarColor: p.avatarColor,
-                queenHealth: p.queenHealth,
-                handCount: p.hand.length,
-                isReady: p.isReady
-            })),
-            currentTurn: game.currentTurn,
-            phase: game.phase,
-            myHand: newPlayer.hand,
-            myUsername: player.username,
-            myQueenHealth: newPlayer.queenHealth,
-            myDeckCount: newPlayer.deck.length,
-            myEnergy: newPlayer.energy,
-            maxEnergy: newPlayer.maxEnergy,
-            opponentUsername: existingPlayer.username
-        });
+        console.log(`🗑️ ${deletedCount} mesaj silindi (${username})`);
+    });
+
+    // ======== 18. KULLANICI BAN (Admin) ========
+    socket.on('banUser', (data) => {
+        const user = socketToUser.get(socket.id);
+        if (!user || !user.isAdmin) {
+            socket.emit('error', 'Sadece admin yapabilir!');
+            return;
+        }
         
-        // Geri sayım başlat
-        let countdown = 5;
-        const roomName = `game_${gameCode}`;
-        const timer = setInterval(() => {
-            io.to(roomName).emit('countdown', {
-                count: countdown,
-                message: countdown > 0 ? `${countdown}` : 'OYUN BAŞLIYOR!'
+        const targetUsername = data.username;
+        let targetId = null;
+        let targetUser = null;
+        
+        for (const [id, u] of users) {
+            if (u.username === targetUsername) {
+                targetId = id;
+                targetUser = u;
+                break;
+            }
+        }
+        
+        if (targetId) {
+            const targetSocket = io.sockets.sockets.get(targetId);
+            if (targetSocket) {
+                targetSocket.emit('youAreBanned', {
+                    bannedBy: user.username,
+                    reason: data.reason || 'Kural ihlali'
+                });
+                targetSocket.disconnect();
+            }
+            users.delete(targetId);
+            socketToUser.delete(targetId);
+            onlineUsers.delete(targetId);
+            
+            io.emit('userBanned', {
+                username: targetUsername,
+                bannedBy: user.username
             });
             
-            if (countdown <= 0) {
-                clearInterval(timer);
-                startGame(gameCode);
+            console.log(`🚫 ${targetUsername} banlandı (${user.username})`);
+        }
+    });
+
+    // ======== 19. KULLANICI BİLGİLERİNİ GETİR ========
+    socket.on('getUserInfo', (data) => {
+        const user = socketToUser.get(socket.id);
+        if (!user) return;
+        
+        const targetUsername = data.username;
+        let targetUser = null;
+        
+        for (const [id, u] of users) {
+            if (u.username === targetUsername) {
+                targetUser = u;
+                break;
             }
-            countdown--;
-        }, 1000);
+        }
+        
+        if (targetUser) {
+            socket.emit('userInfoResponse', {
+                username: targetUser.username,
+                avatar: targetUser.avatar,
+                isAdmin: targetUser.isAdmin,
+                joinedAt: targetUser.joinedAt,
+                lastActive: targetUser.lastActive
+            });
+        } else {
+            socket.emit('error', 'Kullanıcı bulunamadı!');
+        }
+    });
+
+    // ======== 20. ÖZEL MESAJ ========
+    socket.on('privateMessage', (data) => {
+        const user = socketToUser.get(socket.id);
+        if (!user) return;
+        
+        const targetUsername = data.targetUsername;
+        let targetId = null;
+        
+        for (const [id, u] of users) {
+            if (u.username === targetUsername) {
+                targetId = id;
+                break;
+            }
+        }
+        
+        if (targetId) {
+            const targetSocket = io.sockets.sockets.get(targetId);
+            if (targetSocket) {
+                targetSocket.emit('privateMessage', {
+                    from: user.username,
+                    avatar: user.avatar,
+                    message: data.message,
+                    timestamp: Date.now()
+                });
+                socket.emit('privateMessageSent', {
+                    to: targetUsername,
+                    message: data.message
+                });
+            } else {
+                socket.emit('error', 'Kullanıcı çevrimiçi değil!');
+            }
+        } else {
+            socket.emit('error', 'Kullanıcı bulunamadı!');
+        }
     });
 });
 
 // ============ SERVER BAŞLAT ============
 http.listen(PORT, () => {
     console.log(`🚀 Sunucu: http://localhost:${PORT}`);
-    console.log(`🎮 Queen Battle - Kraliçe Savaşı`);
-    console.log(`📊 ${games.size} aktif oyun, ${matchmakingQueue.length} oyuncu bekliyor`);
+    console.log(`💬 Sohbet Uygulaması Aktif`);
+    console.log(`👥 Toplam kullanıcı: ${users.size}`);
+    console.log(`🟢 Çevrimiçi: ${onlineUsers.size}`);
+    console.log(`📝 Mesaj geçmişi: ${chatHistory.length}`);
 });
