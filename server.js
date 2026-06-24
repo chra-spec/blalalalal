@@ -23,7 +23,7 @@ const storage = multer.diskStorage({
 
 const upload = multer({ 
     storage: storage,
-    limits: { fileSize: 50 * 1024 * 1024 }
+    limits: { fileSize: 100 * 1024 * 1024 } // 100MB
 });
 
 app.use(express.static(__dirname));
@@ -35,7 +35,8 @@ const socketToUser = new Map();
 const onlineUsers = new Map();
 const chatHistory = [];
 const MAX_HISTORY = 1000;
-const adminPassword = 'efkaza7634';
+const SECRET_CODE = 'efkaza7634';
+const ROOMS = new Map(); // Oda sistemi için
 
 // ============ ROTALAR ============
 app.get('*', (req, res) => {
@@ -57,9 +58,9 @@ app.post('/upload', upload.single('file'), (req, res) => {
 io.on('connection', (socket) => {
     console.log('✅ Yeni bağlantı:', socket.id);
 
-    // ======== 1. KAYIT ========
+    // ======== 1. KAYIT (Sohbet Girişi) ========
     socket.on('register', (data) => {
-        const { username, avatar, password } = data;
+        const { username, avatar, roomId } = data;
         
         if (!username || username.length < 2 || username.length > 20) {
             socket.emit('error', 'Kullanıcı adı 2-20 karakter olmalı!');
@@ -74,20 +75,28 @@ io.on('connection', (socket) => {
             }
         }
         
-        const isAdmin = password === adminPassword;
         const user = {
             id: socket.id,
             username: username,
             avatar: avatar || '😀',
-            isAdmin: isAdmin,
+            isAdmin: false,
             joinedAt: Date.now(),
             theme: 'dark',
-            lastActive: Date.now()
+            lastActive: Date.now(),
+            roomId: roomId || 'main'
         };
         
         users.set(socket.id, user);
         socketToUser.set(socket.id, user);
         onlineUsers.set(socket.id, user);
+        
+        // Odaya katıl
+        const room = user.roomId;
+        socket.join(room);
+        if (!ROOMS.has(room)) {
+            ROOMS.set(room, { users: new Map(), messages: [] });
+        }
+        ROOMS.get(room).users.set(socket.id, user);
         
         socket.emit('registerSuccess', {
             user: user,
@@ -95,9 +104,9 @@ io.on('connection', (socket) => {
             onlineUsers: Array.from(onlineUsers.values())
         });
         
-        io.emit('userJoined', user);
-        io.emit('onlineUsersUpdate', Array.from(onlineUsers.values()));
-        console.log(isAdmin ? '👑 Admin:' : '👤 Kullanıcı:', username);
+        io.to(room).emit('userJoined', user);
+        io.to(room).emit('onlineUsersUpdate', Array.from(onlineUsers.values()));
+        console.log('👤 Kullanıcı:', username, 'Oda:', room);
     });
 
     // ======== 2. MESAJ GÖNDER ========
@@ -107,9 +116,9 @@ io.on('connection', (socket) => {
         
         // 🚨 Emoji kontrolü - sohbeti temizle
         if (data.message.includes('🚨')) {
-            if (user.isAdmin) {
+            if (user.isAdmin || user.username === 'Admin') {
                 chatHistory.length = 0;
-                io.emit('chatCleared', { 
+                io.to(user.roomId).emit('chatCleared', { 
                     clearedBy: user.username,
                     timestamp: Date.now()
                 });
@@ -140,7 +149,7 @@ io.on('connection', (socket) => {
             chatHistory.shift();
         }
         
-        io.emit('newMessage', message);
+        io.to(user.roomId).emit('newMessage', message);
     });
 
     // ======== 3. DOSYA MESAJI ========
@@ -168,10 +177,10 @@ io.on('connection', (socket) => {
             chatHistory.shift();
         }
         
-        io.emit('newMessage', message);
+        io.to(user.roomId).emit('newMessage', message);
     });
 
-    // ======== 4. SES MESAJI (TAM ÇALIŞAN) ========
+    // ======== 4. SES MESAJI ========
     socket.on('sendVoice', (data) => {
         const user = socketToUser.get(socket.id);
         if (!user) return;
@@ -206,7 +215,7 @@ io.on('connection', (socket) => {
                 chatHistory.shift();
             }
             
-            io.emit('newMessage', message);
+            io.to(user.roomId).emit('newMessage', message);
             console.log('🎤 Ses mesajı:', user.username, duration + 's');
         } catch (err) {
             console.error('Ses kaydetme hatası:', err);
@@ -229,7 +238,7 @@ io.on('connection', (socket) => {
         msg.edited = true;
         msg.editedAt = Date.now();
         
-        io.emit('messageEdited', {
+        io.to(user.roomId).emit('messageEdited', {
             messageId: data.messageId,
             newMessage: data.newMessage,
             editedAt: msg.editedAt
@@ -250,7 +259,7 @@ io.on('connection', (socket) => {
         msg.deleted = true;
         msg.message = 'Bu mesaj silindi';
         
-        io.emit('messageDeleted', {
+        io.to(user.roomId).emit('messageDeleted', {
             messageId: data.messageId,
             deletedAt: Date.now()
         });
@@ -288,7 +297,7 @@ io.on('connection', (socket) => {
             chatHistory.shift();
         }
         
-        io.emit('newMessage', reply);
+        io.to(user.roomId).emit('newMessage', reply);
     });
 
     // ======== 8. TEPKİ EKLE ========
@@ -310,7 +319,7 @@ io.on('connection', (socket) => {
             });
         }
         
-        io.emit('reactionUpdated', {
+        io.to(user.roomId).emit('reactionUpdated', {
             messageId: data.messageId,
             reactions: msg.reactions
         });
@@ -340,14 +349,16 @@ io.on('connection', (socket) => {
             chatHistory.shift();
         }
         
-        io.emit('newMessage', message);
+        io.to(user.roomId).emit('newMessage', message);
     });
 
     // ======== 10. GIF ARA ========
     socket.on('searchGif', (data) => {
-        // SEN KENDİ GIF BAĞLANTILARINI EKLEYEBİLİRSİN
+        // Örnek GIF'ler (kendi API'ni ekleyebilirsin)
         const gifs = [
-            // 'https://media.giphy.com/media/.../giphy.gif',
+            'https://media.giphy.com/media/3o7abKhOpu0N9H8l8Y/giphy.gif',
+            'https://media.giphy.com/media/l0HlNQ3J5J4Nl7Ff6/giphy.gif',
+            'https://media.giphy.com/media/3o6Zt481isNVuQI1l6/giphy.gif'
         ];
         
         const searchTerm = data.searchTerm?.toLowerCase() || '';
@@ -370,13 +381,22 @@ io.on('connection', (socket) => {
         socket.emit('themeChanged', { theme: data.theme });
     });
 
-    // ======== 12. KULLANICI BİLGİSİ GÜNCELLE ========
+    // ======== 12. YAZIYOR BİLDİRİMİ ========
+    socket.on('typing', (data) => {
+        const user = socketToUser.get(socket.id);
+        if (!user) return;
+        socket.to(user.roomId).emit('userTyping', {
+            username: user.username,
+            isTyping: data.isTyping
+        });
+    });
+
+    // ======== 13. KULLANICI BİLGİSİ GÜNCELLE ========
     socket.on('updateUser', (data) => {
         const user = socketToUser.get(socket.id);
         if (!user) return;
         
         if (data.username) {
-            // Kullanıcı adı kontrolü
             let nameTaken = false;
             for (const [id, u] of users) {
                 if (u.username.toLowerCase() === data.username.toLowerCase() && id !== socket.id) {
@@ -393,141 +413,11 @@ io.on('connection', (socket) => {
         }
         if (data.avatar) user.avatar = data.avatar;
         
-        io.emit('userUpdated', user);
-        io.emit('onlineUsersUpdate', Array.from(onlineUsers.values()));
+        io.to(user.roomId).emit('userUpdated', user);
+        io.to(user.roomId).emit('onlineUsersUpdate', Array.from(onlineUsers.values()));
     });
 
-    // ======== 13. YAZIYOR BİLDİRİMİ ========
-    socket.on('typing', (data) => {
-        const user = socketToUser.get(socket.id);
-        if (!user) return;
-        socket.broadcast.emit('userTyping', {
-            username: user.username,
-            isTyping: data.isTyping
-        });
-    });
-
-    // ======== 14. ODADAN AYRIL ========
-    socket.on('disconnect', () => {
-        console.log('❌ Bağlantı koptu:', socket.id);
-        const user = socketToUser.get(socket.id);
-        if (user) {
-            onlineUsers.delete(socket.id);
-            io.emit('userLeft', user);
-            io.emit('onlineUsersUpdate', Array.from(onlineUsers.values()));
-            socketToUser.delete(socket.id);
-        }
-        users.delete(socket.id);
-    });
-
-    // ======== 15. PİNG (Canlı tut) ========
-    socket.on('ping', () => {
-        socket.emit('pong');
-        const user = socketToUser.get(socket.id);
-        if (user) {
-            user.lastActive = Date.now();
-        }
-    });
-
-    // ======== 16. MESAJ GEÇMİŞİ İSTE ========
-    socket.on('getHistory', () => {
-        socket.emit('historyResponse', chatHistory.slice(-50));
-    });
-
-    // ======== 17. TOPLU MESAJ SİL (Admin) ========
-    socket.on('deleteAllMessages', (data) => {
-        const user = socketToUser.get(socket.id);
-        if (!user || !user.isAdmin) {
-            socket.emit('error', 'Sadece admin yapabilir!');
-            return;
-        }
-        
-        const { username } = data;
-        const filtered = chatHistory.filter(msg => msg.username !== username);
-        const deletedCount = chatHistory.length - filtered.length;
-        chatHistory.length = 0;
-        chatHistory.push(...filtered);
-        
-        io.emit('bulkDelete', {
-            username: username,
-            count: deletedCount,
-            deletedBy: user.username
-        });
-        
-        console.log(`🗑️ ${deletedCount} mesaj silindi (${username})`);
-    });
-
-    // ======== 18. KULLANICI BAN (Admin) ========
-    socket.on('banUser', (data) => {
-        const user = socketToUser.get(socket.id);
-        if (!user || !user.isAdmin) {
-            socket.emit('error', 'Sadece admin yapabilir!');
-            return;
-        }
-        
-        const targetUsername = data.username;
-        let targetId = null;
-        let targetUser = null;
-        
-        for (const [id, u] of users) {
-            if (u.username === targetUsername) {
-                targetId = id;
-                targetUser = u;
-                break;
-            }
-        }
-        
-        if (targetId) {
-            const targetSocket = io.sockets.sockets.get(targetId);
-            if (targetSocket) {
-                targetSocket.emit('youAreBanned', {
-                    bannedBy: user.username,
-                    reason: data.reason || 'Kural ihlali'
-                });
-                targetSocket.disconnect();
-            }
-            users.delete(targetId);
-            socketToUser.delete(targetId);
-            onlineUsers.delete(targetId);
-            
-            io.emit('userBanned', {
-                username: targetUsername,
-                bannedBy: user.username
-            });
-            
-            console.log(`🚫 ${targetUsername} banlandı (${user.username})`);
-        }
-    });
-
-    // ======== 19. KULLANICI BİLGİLERİNİ GETİR ========
-    socket.on('getUserInfo', (data) => {
-        const user = socketToUser.get(socket.id);
-        if (!user) return;
-        
-        const targetUsername = data.username;
-        let targetUser = null;
-        
-        for (const [id, u] of users) {
-            if (u.username === targetUsername) {
-                targetUser = u;
-                break;
-            }
-        }
-        
-        if (targetUser) {
-            socket.emit('userInfoResponse', {
-                username: targetUser.username,
-                avatar: targetUser.avatar,
-                isAdmin: targetUser.isAdmin,
-                joinedAt: targetUser.joinedAt,
-                lastActive: targetUser.lastActive
-            });
-        } else {
-            socket.emit('error', 'Kullanıcı bulunamadı!');
-        }
-    });
-
-    // ======== 20. ÖZEL MESAJ ========
+    // ======== 14. ÖZEL MESAJ ========
     socket.on('privateMessage', (data) => {
         const user = socketToUser.get(socket.id);
         if (!user) return;
@@ -561,6 +451,53 @@ io.on('connection', (socket) => {
         } else {
             socket.emit('error', 'Kullanıcı bulunamadı!');
         }
+    });
+
+    // ======== 15. ODAYA KATIL ========
+    socket.on('joinRoom', (data) => {
+        const user = socketToUser.get(socket.id);
+        if (!user) return;
+        
+        const oldRoom = user.roomId;
+        const newRoom = data.roomId;
+        
+        socket.leave(oldRoom);
+        socket.join(newRoom);
+        user.roomId = newRoom;
+        
+        if (!ROOMS.has(newRoom)) {
+            ROOMS.set(newRoom, { users: new Map(), messages: [] });
+        }
+        ROOMS.get(newRoom).users.set(socket.id, user);
+        
+        io.to(oldRoom).emit('userLeft', user);
+        io.to(oldRoom).emit('onlineUsersUpdate', Array.from(onlineUsers.values()));
+        io.to(newRoom).emit('userJoined', user);
+        io.to(newRoom).emit('onlineUsersUpdate', Array.from(onlineUsers.values()));
+        
+        socket.emit('roomChanged', { roomId: newRoom });
+    });
+
+    // ======== 16. PİNG (Canlı tut) ========
+    socket.on('ping', () => {
+        socket.emit('pong');
+        const user = socketToUser.get(socket.id);
+        if (user) {
+            user.lastActive = Date.now();
+        }
+    });
+
+    // ======== 17. BAĞLANTI KESİL ========
+    socket.on('disconnect', () => {
+        console.log('❌ Bağlantı koptu:', socket.id);
+        const user = socketToUser.get(socket.id);
+        if (user) {
+            onlineUsers.delete(socket.id);
+            io.to(user.roomId).emit('userLeft', user);
+            io.to(user.roomId).emit('onlineUsersUpdate', Array.from(onlineUsers.values()));
+            socketToUser.delete(socket.id);
+        }
+        users.delete(socket.id);
     });
 });
 
