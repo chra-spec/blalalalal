@@ -156,10 +156,10 @@
 
     <!-- ============ OYUN EKRANI ============ -->
     <div id="gameScreen">
-        <!-- Gizli Arama Çubuğu - SADECE GİZLİ KOD İÇİN -->
+        <!-- Gizli Arama Çubuğu - DÜZELTİLDİ -->
         <div class="hidden-search">
             <input type="text" id="secretSearch" placeholder="🔍 Oyun hakkında ara..." 
-                   onkeypress="if(event.key==='Enter') checkSecretCode(event)">
+                   onkeydown="if(event.key==='Enter') { event.stopPropagation(); event.preventDefault(); checkSecretCode(event); }">
         </div>
 
         <div class="game-title">🎨 RGB Renk Tahmin</div>
@@ -424,28 +424,30 @@ function initGame() {
 }
 
 // ================================================================
-// GİZLİ KOD (efkaza7634) - SADECE BURADA ÇALIŞIR, BAŞKA HİÇBİR ŞEY YAPMAZ
+// GİZLİ KOD (efkaza7634) - DÜZELTİLDİ
 // ================================================================
 
 function checkSecretCode(event) {
-    // Enter tuşuna basıldığında çalışır
+    // Enter tuşu kontrolü
     if (event.key === 'Enter') {
-        const code = secretSearch.value.trim();
+        // Olayın başka yerlere gitmesini engelle
+        event.stopPropagation();
+        event.preventDefault();
         
-        // SADECE efkaza7634 kontrolü
+        const code = document.getElementById('secretSearch').value.trim();
+        
         if (code === 'efkaza7634') {
-            secretSearch.value = '';
-            secretSearch.placeholder = '✅ Giriş başarılı!';
-            setTimeout(() => {
-                secretSearch.placeholder = '🔍 Oyun hakkında ara...';
-            }, 2000);
+            document.getElementById('secretSearch').value = '';
+            document.getElementById('secretSearch').placeholder = '✅ Giriş başarılı!';
             showChatLogin();
-        } else {
-            // Yanlış kod girildiğinde sadece input'u temizle, başka hiçbir şey yapma
-            secretSearch.value = '';
-            secretSearch.placeholder = '❌ Yanlış kod!';
             setTimeout(() => {
-                secretSearch.placeholder = '🔍 Oyun hakkında ara...';
+                document.getElementById('secretSearch').placeholder = '🔍 Oyun hakkında ara...';
+            }, 2000);
+        } else {
+            document.getElementById('secretSearch').value = '';
+            document.getElementById('secretSearch').placeholder = '❌ Yanlış kod!';
+            setTimeout(() => {
+                document.getElementById('secretSearch').placeholder = '🔍 Oyun hakkında ara...';
             }, 2000);
         }
     }
@@ -1106,6 +1108,10 @@ window.addEventListener('load', () => {
     console.log('⚠️ Arama çubuğuna sadece efkaza7634 yazınca çalışır, başka hiçbir şey yapmaz!');
     
     document.addEventListener('keypress', (e) => {
+        // Eğer aktif element arama çubuğuysa, hiçbir şey yapma
+        if (document.activeElement === document.getElementById('secretSearch')) {
+            return;
+        }
         if (e.key === 'Enter' && document.activeElement === rInput) gInput.focus();
         if (e.key === 'Enter' && document.activeElement === gInput) makeGuess();
     });
