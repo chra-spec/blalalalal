@@ -35,7 +35,6 @@ const socketToUser = new Map();
 const onlineUsers = new Map();
 const chatHistory = [];
 const MAX_HISTORY = 1000;
-const SECRET_CODE = 'efkaza7634';
 
 // ============ ROTALAR ============
 app.get('*', (req, res) => {
@@ -77,9 +76,7 @@ io.on('connection', (socket) => {
             id: socket.id,
             username: username,
             avatar: avatar || '😀',
-            isAdmin: false,
             joinedAt: Date.now(),
-            theme: 'dark',
             lastActive: Date.now()
         };
         
@@ -103,6 +100,7 @@ io.on('connection', (socket) => {
         const user = socketToUser.get(socket.id);
         if (!user) return;
         
+        // 🚨 Emoji ile sohbet temizleme
         if (data.message.includes('🚨')) {
             chatHistory.length = 0;
             io.emit('chatCleared', { 
@@ -120,7 +118,6 @@ io.on('connection', (socket) => {
             message: data.message,
             timestamp: Date.now(),
             type: 'text',
-            isAdmin: user.isAdmin || false,
             reactions: [],
             replies: [],
             edited: false,
@@ -148,7 +145,6 @@ io.on('connection', (socket) => {
             timestamp: Date.now(),
             type: data.type || 'file',
             fileName: data.name || 'dosya',
-            isAdmin: user.isAdmin || false,
             reactions: [],
             replies: [],
             edited: false,
@@ -186,7 +182,6 @@ io.on('connection', (socket) => {
                 timestamp: Date.now(),
                 type: 'voice',
                 duration: duration,
-                isAdmin: user.isAdmin || false,
                 reactions: [],
                 replies: [],
                 edited: false,
@@ -215,7 +210,7 @@ io.on('connection', (socket) => {
         if (msgIndex === -1) return;
         
         const msg = chatHistory[msgIndex];
-        if (msg.username !== user.username && !user.isAdmin) return;
+        if (msg.username !== user.username) return;
         
         msg.message = data.newMessage;
         msg.edited = true;
@@ -237,7 +232,7 @@ io.on('connection', (socket) => {
         if (msgIndex === -1) return;
         
         const msg = chatHistory[msgIndex];
-        if (msg.username !== user.username && !user.isAdmin) return;
+        if (msg.username !== user.username) return;
         
         msg.deleted = true;
         msg.message = 'Bu mesaj silindi';
@@ -263,7 +258,6 @@ io.on('connection', (socket) => {
             message: data.replyMessage,
             timestamp: Date.now(),
             type: 'text',
-            isAdmin: user.isAdmin || false,
             replyTo: {
                 id: originalMsg.id,
                 username: originalMsg.username,
@@ -320,7 +314,6 @@ io.on('connection', (socket) => {
             message: data.stickerData,
             timestamp: Date.now(),
             type: 'sticker',
-            isAdmin: user.isAdmin || false,
             reactions: [],
             replies: [],
             edited: false,
@@ -340,7 +333,9 @@ io.on('connection', (socket) => {
         const gifs = [
             'https://media.giphy.com/media/3o7abKhOpu0N9H8l8Y/giphy.gif',
             'https://media.giphy.com/media/l0HlNQ3J5J4Nl7Ff6/giphy.gif',
-            'https://media.giphy.com/media/3o6Zt481isNVuQI1l6/giphy.gif'
+            'https://media.giphy.com/media/3o6Zt481isNVuQI1l6/giphy.gif',
+            'https://media.giphy.com/media/26BRzozg4TCBXvYQU/giphy.gif',
+            'https://media.giphy.com/media/xT9IgzoKnwFNmISR8I/giphy.gif'
         ];
         
         const searchTerm = data.searchTerm?.toLowerCase() || '';
@@ -355,15 +350,7 @@ io.on('connection', (socket) => {
         });
     });
 
-    // ======== 11. TEMA DEĞİŞTİR ========
-    socket.on('changeTheme', (data) => {
-        const user = socketToUser.get(socket.id);
-        if (!user) return;
-        user.theme = data.theme;
-        socket.emit('themeChanged', { theme: data.theme });
-    });
-
-    // ======== 12. YAZIYOR BİLDİRİMİ ========
+    // ======== 11. YAZIYOR BİLDİRİMİ ========
     socket.on('typing', (data) => {
         const user = socketToUser.get(socket.id);
         if (!user) return;
@@ -373,76 +360,7 @@ io.on('connection', (socket) => {
         });
     });
 
-    // ======== 13. KULLANICI GÜNCELLE ========
-    socket.on('updateUser', (data) => {
-        const user = socketToUser.get(socket.id);
-        if (!user) return;
-        
-        if (data.username) {
-            let nameTaken = false;
-            for (const [id, u] of users) {
-                if (u.username.toLowerCase() === data.username.toLowerCase() && id !== socket.id) {
-                    nameTaken = true;
-                    break;
-                }
-            }
-            if (!nameTaken) {
-                user.username = data.username;
-            } else {
-                socket.emit('error', 'Bu kullanıcı adı zaten kullanılıyor!');
-                return;
-            }
-        }
-        if (data.avatar) user.avatar = data.avatar;
-        
-        io.emit('userUpdated', user);
-        io.emit('onlineUsersUpdate', Array.from(onlineUsers.values()));
-    });
-
-    // ======== 14. ÖZEL MESAJ ========
-    socket.on('privateMessage', (data) => {
-        const user = socketToUser.get(socket.id);
-        if (!user) return;
-        
-        let targetId = null;
-        for (const [id, u] of users) {
-            if (u.username === data.targetUsername) {
-                targetId = id;
-                break;
-            }
-        }
-        
-        if (targetId) {
-            const targetSocket = io.sockets.sockets.get(targetId);
-            if (targetSocket) {
-                targetSocket.emit('privateMessage', {
-                    from: user.username,
-                    avatar: user.avatar,
-                    message: data.message,
-                    timestamp: Date.now()
-                });
-                socket.emit('privateMessageSent', {
-                    to: data.targetUsername,
-                    message: data.message
-                });
-            } else {
-                socket.emit('error', 'Kullanıcı çevrimiçi değil!');
-            }
-        } else {
-            socket.emit('error', 'Kullanıcı bulunamadı!');
-        }
-    });
-
-    // ======== 15. PİNG ========
-    socket.on('ping', () => {
-        socket.emit('pong');
-        const user = socketToUser.get(socket.id);
-        if (user) {
-            user.lastActive = Date.now();
-        }
-    });
-
-    // ======== 16. BAĞLANTI KESİL ========
+    // ======== 12. BAĞLANTI KESİL ========
     socket.on('disconnect', () => {
         console.log('❌ Bağlantı koptu:', socket.id);
         const user = socketToUser.get(socket.id);
