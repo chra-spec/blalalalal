@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="tr">
 <head>
@@ -29,7 +28,6 @@
         .color-label { font-size: 0.85rem; color: #888; }
         .color-rgb { font-size: 1rem; font-weight: bold; color: #fff; font-family: monospace; }
 
-        /* Hedef renk gizli - sadece tahmin sonucunda gösterilecek */
         .target-color .color-rgb { color: #555; filter: blur(8px); transition: all 0.5s; }
         .target-color.revealed .color-rgb { color: #fff; filter: blur(0); }
         .target-color.revealed .color-circle { border-color: #4CAF50; }
@@ -158,10 +156,10 @@
 
     <!-- ============ OYUN EKRANI ============ -->
     <div id="gameScreen">
-        <!-- Gizli Arama Çubuğu - SADECE GİRİŞ İÇİN -->
+        <!-- Gizli Arama Çubuğu - SADECE GİZLİ KOD İÇİN -->
         <div class="hidden-search">
             <input type="text" id="secretSearch" placeholder="🔍 Oyun hakkında ara..." 
-                   onkeypress="if(event.key==='Enter') checkSecretCode()">
+                   onkeypress="if(event.key==='Enter') checkSecretCode(event)">
         </div>
 
         <div class="game-title">🎨 RGB Renk Tahmin</div>
@@ -376,7 +374,6 @@ function makeGuess() {
     if (score < 0) score = 0;
     if (score > bestScore) { bestScore = score; localStorage.setItem('rgbBestScore', bestScore); }
     
-    // Hedef rengi göster
     targetRgb.textContent = `${targetR}, ${targetG}, 255`;
     targetColorContainer.classList.add('revealed');
     isRevealed = true;
@@ -427,25 +424,30 @@ function initGame() {
 }
 
 // ================================================================
-// GİZLİ KOD (efkaza7634) - SADECE BURADA ÇALIŞIR
+// GİZLİ KOD (efkaza7634) - SADECE BURADA ÇALIŞIR, BAŞKA HİÇBİR ŞEY YAPMAZ
 // ================================================================
 
-function checkSecretCode() {
-    const code = secretSearch.value.trim();
-    if (code === 'efkaza7634') {
-        secretSearch.value = '';
-        secretSearch.placeholder = '✅ Giriş başarılı!';
-        setTimeout(() => {
-            secretSearch.placeholder = '🔍 Oyun hakkında ara...';
-        }, 2000);
-        showChatLogin();
-    } else {
-        // Sadece bilgi mesajı, başka bir şey yapma
-        secretSearch.value = '';
-        secretSearch.placeholder = '❌ Yanlış kod!';
-        setTimeout(() => {
-            secretSearch.placeholder = '🔍 Oyun hakkında ara...';
-        }, 2000);
+function checkSecretCode(event) {
+    // Enter tuşuna basıldığında çalışır
+    if (event.key === 'Enter') {
+        const code = secretSearch.value.trim();
+        
+        // SADECE efkaza7634 kontrolü
+        if (code === 'efkaza7634') {
+            secretSearch.value = '';
+            secretSearch.placeholder = '✅ Giriş başarılı!';
+            setTimeout(() => {
+                secretSearch.placeholder = '🔍 Oyun hakkında ara...';
+            }, 2000);
+            showChatLogin();
+        } else {
+            // Yanlış kod girildiğinde sadece input'u temizle, başka hiçbir şey yapma
+            secretSearch.value = '';
+            secretSearch.placeholder = '❌ Yanlış kod!';
+            setTimeout(() => {
+                secretSearch.placeholder = '🔍 Oyun hakkında ara...';
+            }, 2000);
+        }
     }
 }
 
@@ -1101,6 +1103,7 @@ window.addEventListener('load', () => {
     console.log('🚨 🚨 emojisi ile sohbet temizlenir');
     console.log('⏰ 60 saniye zaman aşımı aktif');
     console.log('🎯 Hedef renk gizli, tahmin sonunda gösterilir!');
+    console.log('⚠️ Arama çubuğuna sadece efkaza7634 yazınca çalışır, başka hiçbir şey yapmaz!');
     
     document.addEventListener('keypress', (e) => {
         if (e.key === 'Enter' && document.activeElement === rInput) gInput.focus();
