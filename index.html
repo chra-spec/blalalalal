@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>🎨 RGB Renk Tahmin Oyunu + Sohbet</title>
     <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
         /* ============================================================
            TEMEL STİLLER
@@ -19,11 +20,119 @@
         ============================================================ */
         #gameScreen { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; padding: 30px; background: linear-gradient(135deg, #0a0e1a, #16213e); position: relative; }
         
-        .hidden-search { position: absolute; top: 15px; right: 20px; z-index: 100; }
-        .hidden-search input { padding: 8px 16px; border-radius: 20px; border: 1px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.05); color: #fff; font-size: 14px; width: 180px; transition: all 0.3s; }
-        .hidden-search input:focus { outline: none; border-color: #667eea; box-shadow: 0 0 20px rgba(102,126,234,0.2); width: 220px; }
-        .hidden-search input::placeholder { color: #555; }
-        
+        /* ============================================================
+           YENİ GİZLİ ARAMA BUTONU (SOL ÜST)
+        ============================================================ */
+        .secret-entry {
+            position: absolute;
+            top: 15px;
+            left: 20px;
+            z-index: 100;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .secret-toggle {
+            background: rgba(102, 126, 234, 0.15);
+            border: 2px solid rgba(102, 126, 234, 0.3);
+            color: #667eea;
+            padding: 10px 14px;
+            border-radius: 50%;
+            font-size: 18px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.2);
+            width: 48px;
+            height: 48px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .secret-toggle:hover {
+            background: rgba(102, 126, 234, 0.25);
+            border-color: #667eea;
+            transform: scale(1.05);
+            box-shadow: 0 4px 25px rgba(102, 126, 234, 0.4);
+        }
+
+        .secret-toggle.active {
+            background: rgba(102, 126, 234, 0.3);
+            border-color: #667eea;
+            box-shadow: 0 0 30px rgba(102, 126, 234, 0.3);
+        }
+
+        .secret-input-wrapper {
+            display: none;
+            align-items: center;
+            gap: 6px;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 6px 8px;
+            border-radius: 30px;
+            border: 2px solid rgba(102, 126, 234, 0.3);
+            backdrop-filter: blur(10px);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+            animation: slideInLeft 0.3s ease;
+        }
+
+        .secret-input-wrapper.active {
+            display: flex;
+        }
+
+        @keyframes slideInLeft {
+            from {
+                opacity: 0;
+                transform: translateX(-20px) scale(0.9);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0) scale(1);
+            }
+        }
+
+        .secret-input-wrapper input {
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: #fff;
+            padding: 10px 16px;
+            border-radius: 25px;
+            font-size: 15px;
+            width: 200px;
+            outline: none;
+            transition: all 0.3s;
+            font-weight: 500;
+            letter-spacing: 0.5px;
+        }
+
+        .secret-input-wrapper input:focus {
+            border-color: #667eea;
+            box-shadow: 0 0 20px rgba(102, 126, 234, 0.2);
+            background: rgba(255, 255, 255, 0.12);
+        }
+
+        .secret-input-wrapper input::placeholder {
+            color: #666;
+            font-weight: 400;
+        }
+
+        .secret-confirm {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            border: none;
+            color: #fff;
+            padding: 10px 16px;
+            border-radius: 25px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-weight: bold;
+        }
+
+        .secret-confirm:hover {
+            transform: scale(1.05);
+            box-shadow: 0 4px 20px rgba(102, 126, 234, 0.4);
+        }
+
         .game-title { font-size: 2.5rem; margin-bottom: 10px; background: linear-gradient(90deg, #667eea, #764ba2); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
         .game-sub { color: #888; margin-bottom: 25px; font-size: 1rem; }
         
@@ -146,10 +255,10 @@
             .app-container { max-height: 100vh; border-radius: 0; max-width: 100%; }
             .color-circle { width: 80px; height: 80px; }
             .game-title { font-size: 1.8rem; }
-            .hidden-search input { width: 130px; font-size: 12px; }
-            .hidden-search input:focus { width: 160px; }
             .guess-area input { width: 60px; font-size: 16px; padding: 8px; }
             .message-wrapper .msg-content { max-width: 85%; }
+            .secret-input-wrapper input { width: 150px; font-size: 13px; padding: 8px 12px; }
+            .secret-toggle { width: 40px; height: 40px; font-size: 16px; padding: 8px; }
         }
         @media (max-width: 480px) {
             .color-display { gap: 20px; }
@@ -161,6 +270,21 @@
             .chat-input-area .input-row { flex-wrap: wrap; }
             .chat-input-area .input-row input { min-width: 120px; }
             .message-wrapper .msg-content { max-width: 90%; }
+            .secret-input-wrapper {
+                flex-wrap: wrap;
+                padding: 8px;
+                border-radius: 16px;
+                width: 200px;
+            }
+            .secret-input-wrapper input {
+                width: 100%;
+                font-size: 12px;
+            }
+            .secret-confirm {
+                width: 100%;
+                padding: 8px;
+                font-size: 14px;
+            }
         }
     </style>
 </head>
@@ -172,10 +296,17 @@
         
         <!-- ============ OYUN EKRANI ============ -->
         <div id="gameScreen">
-            <!-- Gizli Arama Çubuğu -->
-            <div class="hidden-search">
-                <input type="text" id="secretSearch" placeholder="🔍 Gizli kodu gir..." 
-                       onkeydown="if(event.key==='Enter'){ event.preventDefault(); checkSecretCode(event); }">
+            <!-- YENİ GİZLİ ARAMA BUTONU (SOL ÜST) -->
+            <div class="secret-entry" id="secretEntry">
+                <button class="secret-toggle" onclick="toggleSecretInput()">
+                    🔑
+                </button>
+                <div class="secret-input-wrapper" id="secretInputWrapper" style="display: none;">
+                    <input type="text" id="secretSearch" placeholder="🔑 Gizli kodu gir..." 
+                           onkeydown="if(event.key==='Enter'){ event.preventDefault(); checkSecretCode(event); }"
+                           autofocus>
+                    <button class="secret-confirm" onclick="checkSecretCodeManual()">➜</button>
+                </div>
             </div>
 
             <div class="game-title">🎨 RGB Renk Tahmin</div>
@@ -453,29 +584,110 @@
         }
 
         // ============================================================
-        // 4. GİZLİ KOD SİSTEMİ
+        // 4. YENİ GİZLİ ARAMA FONKSİYONLARI
         // ============================================================
+
+        function toggleSecretInput() {
+            const wrapper = document.getElementById('secretInputWrapper');
+            const toggleBtn = document.querySelector('.secret-toggle');
+            
+            if (wrapper.style.display === 'none' || wrapper.style.display === '') {
+                wrapper.style.display = 'flex';
+                wrapper.classList.add('active');
+                toggleBtn.classList.add('active');
+                setTimeout(() => {
+                    document.getElementById('secretSearch').focus();
+                }, 100);
+            } else {
+                wrapper.style.display = 'none';
+                wrapper.classList.remove('active');
+                toggleBtn.classList.remove('active');
+            }
+        }
 
         function checkSecretCode(event) {
             event.preventDefault();
             event.stopPropagation();
             
-            const code = document.getElementById('secretSearch').value.trim();
+            const input = document.getElementById('secretSearch');
+            const code = input.value.trim();
+            
             if (code === 'efkaza7634') {
-                document.getElementById('secretSearch').value = '';
-                document.getElementById('secretSearch').placeholder = '✅ Giriş başarılı!';
+                input.value = '';
+                input.placeholder = '✅ Giriş başarılı!';
+                input.style.borderColor = '#4CAF50';
+                input.style.boxShadow = '0 0 30px rgba(76, 175, 80, 0.3)';
+                
                 setTimeout(() => {
-                    document.getElementById('secretSearch').placeholder = '🔍 Gizli kodu gir...';
-                }, 2000);
-                showChatLogin();
+                    input.placeholder = '🔑 Gizli kodu gir...';
+                    input.style.borderColor = '';
+                    input.style.boxShadow = '';
+                    document.getElementById('secretInputWrapper').style.display = 'none';
+                    document.getElementById('secretInputWrapper').classList.remove('active');
+                    document.querySelector('.secret-toggle').classList.remove('active');
+                    showChatLogin();
+                }, 1500);
+                
             } else {
-                document.getElementById('secretSearch').value = '';
-                document.getElementById('secretSearch').placeholder = '❌ Yanlış kod!';
+                input.value = '';
+                input.placeholder = '❌ Yanlış kod!';
+                input.style.borderColor = '#e74c3c';
+                input.style.boxShadow = '0 0 30px rgba(231, 76, 60, 0.3)';
+                
                 setTimeout(() => {
-                    document.getElementById('secretSearch').placeholder = '🔍 Gizli kodu gir...';
+                    input.placeholder = '🔑 Gizli kodu gir...';
+                    input.style.borderColor = '';
+                    input.style.boxShadow = '';
                 }, 2000);
             }
         }
+
+        function checkSecretCodeManual() {
+            const input = document.getElementById('secretSearch');
+            const code = input.value.trim();
+            
+            if (code === 'efkaza7634') {
+                input.value = '';
+                input.placeholder = '✅ Giriş başarılı!';
+                input.style.borderColor = '#4CAF50';
+                input.style.boxShadow = '0 0 30px rgba(76, 175, 80, 0.3)';
+                
+                setTimeout(() => {
+                    input.placeholder = '🔑 Gizli kodu gir...';
+                    input.style.borderColor = '';
+                    input.style.boxShadow = '';
+                    document.getElementById('secretInputWrapper').style.display = 'none';
+                    document.getElementById('secretInputWrapper').classList.remove('active');
+                    document.querySelector('.secret-toggle').classList.remove('active');
+                    showChatLogin();
+                }, 1500);
+                
+            } else {
+                input.value = '';
+                input.placeholder = '❌ Yanlış kod!';
+                input.style.borderColor = '#e74c3c';
+                input.style.boxShadow = '0 0 30px rgba(231, 76, 60, 0.3)';
+                
+                setTimeout(() => {
+                    input.placeholder = '🔑 Gizli kodu gir...';
+                    input.style.borderColor = '';
+                    input.style.boxShadow = '';
+                }, 2000);
+            }
+        }
+
+        // ESC tuşu ile input'u kapat
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                const wrapper = document.getElementById('secretInputWrapper');
+                if (wrapper.style.display !== 'none') {
+                    wrapper.style.display = 'none';
+                    wrapper.classList.remove('active');
+                    document.querySelector('.secret-toggle').classList.remove('active');
+                    document.getElementById('secretSearch').value = '';
+                }
+            }
+        });
 
         // ============================================================
         // 5. SOHBET GİRİŞ EKRANI
@@ -1125,11 +1337,10 @@
         window.addEventListener('load', () => {
             initGame();
             console.log('🎨 RGB Renk Tahmin Oyunu + Sohbet Uygulaması yüklendi!');
-            console.log('🔑 Gizli kod: efkaza7634 (arama çubuğuna yaz)');
+            console.log('🔑 Gizli kod: efkaza7634 (soldaki 🔑 butonuna tıkla)');
             console.log('🚨 🚨 emojisi ile sohbet temizlenir');
             console.log('⏰ 60 saniye zaman aşımı aktif');
             console.log('🎯 Hedef renk gizli, tahmin sonunda gösterilir!');
-            console.log('⚠️ Arama çubuğuna sadece efkaza7634 yazınca çalışır, başka hiçbir şey yapmaz!');
             
             document.addEventListener('keypress', (e) => {
                 if (e.key === 'Enter' && document.activeElement === rInput) gInput.focus();
@@ -1151,8 +1362,8 @@
             .theme-light .fixed-value { background: rgba(102,126,234,0.1); color: #667eea; border-color: rgba(102,126,234,0.2); }
             .theme-light .score-box { background: rgba(0,0,0,0.05); border-color: rgba(0,0,0,0.08); }
             .theme-light .history-area { background: rgba(0,0,0,0.03); border-color: rgba(0,0,0,0.05); }
-            .theme-light .hidden-search input { background: rgba(0,0,0,0.05); color: #1a1a2e; border-color: #ddd; }
-            .theme-light .hidden-search input::placeholder { color: #888; }
+            .theme-light .secret-input-wrapper input { background: rgba(0,0,0,0.05); color: #1a1a2e; border-color: #ddd; }
+            .theme-light .secret-input-wrapper input::placeholder { color: #888; }
             .theme-light .chat-header { background: #fff; border-bottom: 1px solid #ddd; }
             .theme-light .chat-header .left .info h3 { color: #1a1a2e; }
             .theme-light .message-wrapper .msg-bubble { background: #fff; color: #1a1a2e; }
