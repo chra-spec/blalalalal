@@ -185,6 +185,56 @@ app.get("/api/search", async (req, res) => {
 });
 
 // ==========================================
+// ============ DEBUG ============
+app.get("/api/debug", async (req, res) => {
+  const url = req.query.url || "https://vidnest.fun/anime/21355/1/sub";
+  let browser = null;
+  try {
+    browser = await chromium.launch({
+      headless: true,
+      args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage", "--disable-gpu"]
+    });
+    const ctx = await browser.newContext({
+      userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    });
+    const page = await ctx.newPage();
+    const requests = [];
+    page.on("request", (r) => { if (requests.length < 50) requests.push(r.url()); });
+
+    let gotoError = null;
+    try {
+      await page.goto(url, { waitUntil: "domcontentloaded", timeout: 40000 });
+    } catch (e) { gotoError = e.message; }
+
+    await page.waitForTimeout(8000);
+
+    const title = await page.title();
+    const html = await page.content();
+    const hasCF = html.includes("Just a moment") || html.includes("cf-browser-verification") || html.includes("cf-challenge");
+    const bodyText = await page.evaluate(() => document.body ? document.body.innerText.substring(0, 800) : "NO BODY");
+    const iframes = await page.$$eval("iframe", els => els.map(e => e.src).slice(0, 10));
+    const videos = await page.$$eval("video", els => els.map(e => e.src).slice(0, 5));
+
+    await browser.close();
+
+    res.json({
+      url,
+      gotoError,
+      title,
+      htmlLength: html.length,
+      hasCloudflare: hasCF,
+      bodyText,
+      iframes,
+      videos,
+      requestCount: requests.length,
+      requestsSample: requests.slice(0, 20),
+      htmlSample: html.substring(0, 800)
+    });
+  } catch (e) {
+    if (browser) try { await browser.close(); } catch (x) {}
+    res.json({ error: e.message, stack: e.stack });
+  }
+});
 // API: STREAM (m3u8 linki)
 // ==========================================
 app.get("/api/stream", async (req, res) => {
