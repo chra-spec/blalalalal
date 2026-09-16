@@ -21,7 +21,7 @@ app.use(express.static(__dirname));
 // ==========================================
 // ADMIN KALICILIĞI (dosyaya yaz)
 // ==========================================
-const ADMIN_FILE = path.join(__dirname, "admin.json");
+const ADMIN_FILE = "/data/admin.json";  // Render disk varsa
 let adminDeviceId = null;
 
 function loadAdmin() {
