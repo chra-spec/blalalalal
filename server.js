@@ -24,15 +24,25 @@ const CONFIG = {
   SA_KEY: "5afe1cef7c424ea4a815fed93182dbcd",
   SA_ENDPOINT: "https://api.scrapingant.com/v2/general",
   CACHE_TTL: 30 * 60 * 1000,
-  API_TIMEOUT: 60000,
-  QUEUE_TIMEOUT: 90000,
-  PROXY_COUNTRIES: ["us", "gb", "de"],
+  API_TIMEOUT: 25000,
+  QUEUE_TIMEOUT: 60000,
+  STREAM_ROUTE_TIMEOUT: 55000,
+  PROXY_COUNTRIES: ["us", "gb"],
   URL_VARIANTS: ["sub", "dub"]
 };
 
 function log(tag, msg) {
   const t = new Date().toISOString().slice(11, 23);
   console.log(`[${t}] ${tag} ${msg}`);
+}
+
+function decodeHtmlEntities(str) {
+  return str
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'");
 }
 
 let adminDeviceId = null;
@@ -166,11 +176,13 @@ function extractM3u8(html) {
   if (!html) return null;
   const regex = /https?:\/\/[^"'\s\\<>]+\.m3u8[^"'\s\\<>]*/g;
   const matches = html.match(regex) || [];
-  const filtered = matches.filter((u) =>
-    !u.includes("index-f1") &&
-    !u.includes("iframes") &&
-    !u.includes("segment")
-  );
+  const filtered = matches
+    .map((u) => decodeHtmlEntities(u))
+    .filter((u) =>
+      !u.includes("index-f1") &&
+      !u.includes("iframes") &&
+      !u.includes("segment")
+    );
   if (filtered.length === 0) return null;
   return filtered.reduce((a, b) => a.length > b.length ? a : b);
 }
@@ -205,7 +217,7 @@ async function fetchM3u8(animeId, episode) {
         if (retry.html && !isConcurrencyError(retry.html)) {
           const m3u8 = extractM3u8(retry.html);
           if (m3u8) {
-            log("OK", `${variant}/${country} retry ile`);
+            log("OK", `${variant}/${country} retry`);
             return m3u8;
           }
         }
@@ -286,18 +298,31 @@ app.get("/api/search", async (req, res) => {
 });
 
 app.get("/api/stream", async (req, res) => {
+  const routeTimeout = setTimeout(() => {
+    if (!res.headersSent) {
+      log("TIMEOUT", "Stream route timeout");
+      res.status(200).json({ error: "Zaman asimi. Farkli bolum deneyin." });
+    }
+  }, CONFIG.STREAM_ROUTE_TIMEOUT);
+
   try {
     const { id, ep } = req.query;
-    if (!id || !ep) return res.json({ error: "id ve ep gerekli" });
+    if (!id || !ep) {
+      clearTimeout(routeTimeout);
+      return res.json({ error: "id ve ep gerekli" });
+    }
 
     const key = `${id}_${ep}`;
     if (m3u8Cache.has(key)) {
+      clearTimeout(routeTimeout);
       log("CACHE", key);
       return res.json({ url: m3u8Cache.get(key), cached: true });
     }
 
     log("STREAM", key);
     const m3u8 = await scraperQueue.run(() => fetchM3u8(id, ep));
+
+    clearTimeout(routeTimeout);
 
     if (!m3u8) {
       return res.json({
@@ -311,14 +336,19 @@ app.get("/api/stream", async (req, res) => {
     log("STREAM", `OK ${key}`);
     res.json({ url: m3u8 });
   } catch (e) {
-    res.json({ error: e.message || "Hata" });
+    clearTimeout(routeTimeout);
+    if (!res.headersSent) {
+      res.json({ error: e.message || "Hata" });
+    }
   }
 });
 
 app.get("/api/proxy", async (req, res) => {
   try {
-    const url = req.query.url;
+    let url = req.query.url;
     if (!url) return res.status(400).send("url gerekli");
+
+    url = url.replace(/&amp;/g, "&");
 
     const buf = await curlFetch(url);
     if (!buf || buf.length === 0) return res.status(500).send("bos");
@@ -486,6 +516,7 @@ server.listen(CONFIG.PORT, "0.0.0.0", () => {
   console.log(`Admin: ${adminDeviceId || "(ilk girene)"}`);
   console.log(`API Key: ${CONFIG.SA_KEY ? "AKTIF" : "YOK"}`);
   console.log(`Ulkeler: ${CONFIG.PROXY_COUNTRIES.join(", ")}`);
+  console.log(`Variantlar: ${CONFIG.URL_VARIANTS.join(", ")}`);
   console.log("===========================================");
 });
 
