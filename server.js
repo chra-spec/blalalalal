@@ -43,7 +43,10 @@ function saveAdmin() {
       createdAt: Date.now()
     }));
   } catch (e) {
-    console.error("Admin kaydetme hatası:", e.message);
+    // /data yoksa sessizce geç (disk eklenmemiş)
+    if (!e.message.includes("ENOENT")) {
+      console.error("Admin kaydetme hatası:", e.message);
+    }
   }
 }
 
@@ -59,33 +62,30 @@ const m3u8Cache = new Map();
 // ==========================================
 // PLAYWRIGHT SCRAPER (browser tekil)
 // ==========================================
-let browserInstance = null;
-
-async function getBrowser() {
-  if (browserInstance && browserInstance.isConnected()) return browserInstance;
-  console.log("🌐 Chromium başlatılıyor...");
-  browserInstance = await chromium.launch({
-    headless: true,
-    args: [
-      "--no-sandbox",
-      "--disable-setuid-sandbox",
-      "--disable-dev-shm-usage",
-      "--disable-gpu",
-      "--single-process"
-    ]
-  });
-  return browserInstance;
-}
-
 async function getM3u8(vidnestUrl) {
-  let context;
+  let browser = null;
+  let context = null;
   try {
-    console.log("🔍 Scraper başlıyor:", vidnestUrl);
-    const browser = await getBrowser();
-    console.log("✅ Browser hazır");
-    context = await browser.newContext({
-      userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    console.log("🌐 Chromium başlatılıyor...");
+    browser = await chromium.launch({
+      headless: true,
+      args: [
+        "--no-sandbox",
+        "--disable-setuid-sandbox",
+        "--disable-dev-shm-usage",
+        "--disable-gpu",
+        "--disable-blink-features=AutomationControlled",
+        "--no-zygote"
+      ]
     });
+    console.log("✅ Browser hazır");
+
+    context = await browser.newContext({
+      userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+      viewport: { width: 1280, height: 720 },
+      locale: "en-US"
+    });
+
     const page = await context.newPage();
     const found = new Set();
 
@@ -97,25 +97,34 @@ async function getM3u8(vidnestUrl) {
     });
 
     try {
-      await page.goto(vidnestUrl, { waitUntil: "domcontentloaded", timeout: 45000 });
-    } catch (e) {}
+      await page.goto(vidnestUrl, {
+        waitUntil: "domcontentloaded",
+        timeout: 40000
+      });
+    } catch (e) {
+      console.log("⚠️ Sayfa yükleme uyarısı:", e.message);
+    }
 
-    await page.waitForTimeout(12000);
+    console.log("⏳ 15 saniye bekleniyor...");
+    await page.waitForTimeout(15000);
+
+    console.log("📊 Bulunan m3u8 sayısı:", found.size);
+
     await page.close();
     await context.close();
+    await browser.close();
+    browser = null;
 
     const urls = Array.from(found);
     if (urls.length === 0) return null;
     return urls.reduce((a, b) => a.length > b.length ? a : b);
-} catch (e) {
-  console.error("❌ getM3u8 hata:", e.message);
-  console.error("📍 Stack:", e.stack);
+  } catch (e) {
+    console.error("❌ getM3u8 hata:", e.message);
     if (context) { try { await context.close(); } catch (x) {} }
-    if (browserInstance) { try { await browserInstance.close(); } catch (x) {} browserInstance = null; }
+    if (browser) { try { await browser.close(); } catch (x) {} }
     return null;
   }
 }
-
 // ==========================================
 // CURL YARDIMCI (Cloudflare bypass)
 // ==========================================
