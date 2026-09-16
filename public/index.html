@@ -1,422 +1,712 @@
 <!DOCTYPE html>
 <html lang="tr">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Anime İzle - Test</title>
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body {
-            background: #0f0f1a;
-            color: #fff;
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            min-height: 100vh;
-            padding: 20px;
-        }
-        .container { max-width: 1100px; margin: 0 auto; }
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Anime İzle</title>
+<script src="https://cdn.jsdelivr.net/npm/hls.js@1/dist/hls.min.js"></script>
+<script src="/socket.io/socket.io.js"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body {
+    background: #0a0a14;
+    color: #fff;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
 
-        h1 {
-            color: #667eea;
-            margin-bottom: 20px;
-            font-size: 24px;
-            text-align: center;
-        }
+  /* ============ HEADER ============ */
+  .header {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    padding: 10px 16px;
+    background: rgba(26, 26, 46, 0.95);
+    backdrop-filter: blur(10px);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid #222;
+  }
+  .header h1 {
+    font-size: 16px;
+    color: #667eea;
+    font-weight: 700;
+    letter-spacing: 0.3px;
+  }
+  .badge {
+    padding: 4px 12px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    transition: all 0.3s;
+  }
+  .badge.admin { background: #f39c12; color: #000; box-shadow: 0 0 12px rgba(243, 156, 18, 0.5); }
+  .badge.viewer { background: #333; color: #ccc; }
+  .badge.connecting { background: #555; color: #fff; animation: pulse 1.5s infinite; }
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
 
-        /* Arama kutusu */
-        .search-box {
-            display: flex;
-            gap: 10px;
-            margin-bottom: 20px;
-        }
-        .search-box input {
-            flex: 1;
-            padding: 14px 18px;
-            font-size: 16px;
-            border: 2px solid #333;
-            border-radius: 12px;
-            background: #1a1a2e;
-            color: #fff;
-            outline: none;
-            transition: border-color 0.2s;
-        }
-        .search-box input:focus { border-color: #667eea; }
-        .search-box button {
-            padding: 14px 24px;
-            font-size: 16px;
-            font-weight: 600;
-            background: #667eea;
-            border: none;
-            border-radius: 12px;
-            color: #fff;
-            cursor: pointer;
-            transition: background 0.2s;
-        }
-        .search-box button:hover { background: #5568d3; }
-        .search-box button:disabled { background: #333; cursor: not-allowed; }
+  /* ============ VIDEO ALANI ============ */
+  .video-wrap {
+    position: relative;
+    width: 100%;
+    background: #000;
+    aspect-ratio: 16 / 9;
+    max-height: 70vh;
+  }
+  .video-wrap video {
+    width: 100%;
+    height: 100%;
+    display: block;
+    background: #000;
+  }
+  .video-overlay {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    background: rgba(0, 0, 0, 0.88);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    color: #ccc;
+    font-size: 15px;
+    text-align: center;
+    padding: 24px;
+    transition: opacity 0.3s;
+  }
+  .video-overlay.hidden { display: none; }
+  .video-overlay .icon { font-size: 42px; opacity: 0.6; }
+  .video-overlay .msg { line-height: 1.5; }
 
-        /* Sonuç grid */
-        .results {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-            gap: 15px;
-            margin-bottom: 30px;
-        }
-        .anime-card {
-            background: #1a1a2e;
-            border-radius: 12px;
-            overflow: hidden;
-            cursor: pointer;
-            transition: transform 0.2s, box-shadow 0.2s;
-            border: 2px solid transparent;
-        }
-        .anime-card:hover {
-            transform: translateY(-4px);
-            box-shadow: 0 8px 20px rgba(102, 126, 234, 0.4);
-            border-color: #667eea;
-        }
-        .anime-card img {
-            width: 100%;
-            height: 220px;
-            object-fit: cover;
-            display: block;
-            background: #333;
-        }
-        .anime-info { padding: 10px; }
-        .anime-title {
-            font-size: 13px;
-            font-weight: 600;
-            margin-bottom: 4px;
-            line-height: 1.3;
-            display: -webkit-box;
-            -webkit-line-clamp: 2;
-            -webkit-box-orient: vertical;
-            overflow: hidden;
-        }
-        .anime-meta {
-            font-size: 11px;
-            color: #888;
-        }
+  /* ============ DURUM ÇUBUĞU ============ */
+  .status-bar {
+    padding: 8px 16px;
+    background: #12121f;
+    font-size: 12px;
+    color: #888;
+    display: flex;
+    justify-content: space-between;
+    border-bottom: 1px solid #222;
+  }
+  .status-bar .live {
+    color: #e74c3c;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .status-bar .live::before {
+    content: "";
+    width: 8px; height: 8px;
+    background: #e74c3c;
+    border-radius: 50%;
+    animation: pulse 1.5s infinite;
+  }
 
-        /* Player alanı */
-        .player-section {
-            display: none;
-            background: #1a1a2e;
-            border-radius: 12px;
-            padding: 20px;
-            margin-top: 20px;
-        }
-        .player-section.active { display: block; }
+  /* ============ ADMİN PANELİ ============ */
+  .admin-panel {
+    display: none;
+    padding: 16px;
+    max-width: 1200px;
+    margin: 0 auto;
+  }
+  .admin-panel.show { display: block; }
 
-        .player-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 15px;
-            flex-wrap: wrap;
-            gap: 10px;
-        }
-        .player-title { font-size: 18px; font-weight: 600; }
-        .player-close {
-            background: #e74c3c;
-            border: none;
-            color: #fff;
-            padding: 8px 16px;
-            border-radius: 8px;
-            cursor: pointer;
-            font-size: 13px;
-            font-weight: 600;
-        }
+  .section-title {
+    font-size: 13px;
+    color: #667eea;
+    font-weight: 700;
+    margin-bottom: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
 
-        /* Kontroller */
-        .controls {
-            display: flex;
-            gap: 10px;
-            margin-bottom: 15px;
-            flex-wrap: wrap;
-            align-items: center;
-        }
-        .controls label {
-            font-size: 13px;
-            color: #aaa;
-        }
-        .controls select, .controls input {
-            padding: 8px 12px;
-            border-radius: 8px;
-            border: 1px solid #333;
-            background: #0f0f1a;
-            color: #fff;
-            font-size: 13px;
-            outline: none;
-        }
-        .controls select:focus, .controls input:focus { border-color: #667eea; }
+  .search-box {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 16px;
+  }
+  .search-box input {
+    flex: 1;
+    padding: 12px 16px;
+    border: 2px solid #333;
+    border-radius: 12px;
+    background: #1a1a2e;
+    color: #fff;
+    font-size: 15px;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  .search-box input:focus { border-color: #667eea; }
+  .search-box button {
+    padding: 12px 24px;
+    background: #667eea;
+    color: #fff;
+    border: none;
+    border-radius: 12px;
+    font-weight: 700;
+    font-size: 14px;
+    cursor: pointer;
+    transition: background 0.2s;
+  }
+  .search-box button:hover { background: #5568d3; }
+  .search-box button:disabled { background: #333; cursor: not-allowed; }
 
-        /* Video iframe */
-        .video-wrapper {
-            position: relative;
-            width: 100%;
-            padding-bottom: 56.25%; /* 16:9 */
-            border-radius: 10px;
-            overflow: hidden;
-            background: #000;
-        }
-        .video-wrapper iframe {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            border: none;
-        }
+  .results {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+  .result {
+    background: #1a1a2e;
+    border-radius: 10px;
+    overflow: hidden;
+    cursor: pointer;
+    transition: transform 0.15s, border-color 0.15s;
+    border: 2px solid transparent;
+  }
+  .result:hover {
+    transform: translateY(-3px);
+    border-color: #667eea;
+  }
+  .result.selected { border-color: #27ae60; }
+  .result img {
+    width: 100%;
+    aspect-ratio: 2 / 3;
+    object-fit: cover;
+    display: block;
+    background: #333;
+  }
+  .result-title {
+    padding: 8px;
+    font-size: 11px;
+    line-height: 1.3;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
 
-        .loading {
-            text-align: center;
-            padding: 20px;
-            color: #888;
-        }
-        .error {
-            padding: 12px;
-            background: rgba(231, 76, 60, 0.15);
-            border-left: 4px solid #e74c3c;
-            border-radius: 8px;
-            color: #e74c3c;
-            margin-bottom: 15px;
-            font-size: 13px;
-            display: none;
-        }
-        .error.active { display: block; }
+  .controls {
+    display: flex;
+    gap: 10px;
+    padding: 12px;
+    background: #1a1a2e;
+    border-radius: 12px;
+    align-items: center;
+    flex-wrap: wrap;
+    margin-bottom: 16px;
+  }
+  .controls input {
+    width: 70px;
+    padding: 8px 12px;
+    background: #0a0a14;
+    color: #fff;
+    border: 1px solid #333;
+    border-radius: 8px;
+    font-size: 14px;
+    text-align: center;
+  }
+  .controls button {
+    padding: 8px 16px;
+    background: #667eea;
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    font-weight: 700;
+    font-size: 13px;
+    cursor: pointer;
+  }
+  .controls button:disabled { background: #333; cursor: not-allowed; }
+  .controls .selected-name {
+    flex: 1;
+    min-width: 0;
+    font-size: 13px;
+    color: #aaa;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
 
-        /* Bölüm seçici */
-        .episode-picker {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(45px, 1fr));
-            gap: 8px;
-            max-height: 200px;
-            overflow-y: auto;
-            padding: 10px;
-            background: #0f0f1a;
-            border-radius: 8px;
-            margin-bottom: 15px;
-        }
-        .ep-btn {
-            padding: 10px 0;
-            background: #333;
-            border: 1px solid #444;
-            border-radius: 6px;
-            color: #fff;
-            font-size: 13px;
-            cursor: pointer;
-            transition: all 0.15s;
-        }
-        .ep-btn:hover { background: #444; }
-        .ep-btn.active {
-            background: #667eea;
-            border-color: #667eea;
-        }
-    </style>
+  /* ============ İZLEYİCİ MESAJI ============ */
+  .viewer-info {
+    padding: 20px;
+    text-align: center;
+    color: #666;
+    font-size: 13px;
+    max-width: 600px;
+    margin: 0 auto;
+  }
+  .viewer-info .big {
+    font-size: 42px;
+    margin-bottom: 12px;
+    opacity: 0.5;
+  }
+
+  /* ============ LOG ============ */
+  .log {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 0 16px 24px;
+  }
+  .log .line {
+    padding: 4px 0;
+    font-size: 11px;
+    color: #555;
+    font-family: "Courier New", monospace;
+  }
+</style>
 </head>
 <body>
-    <div class="container">
-        <h1>🎬 Anime İzle</h1>
 
-        <div class="search-box">
-            <input type="text" id="searchInput" placeholder="Anime ara... (ör: rezero, naruto, jujutsu)" autocomplete="off">
-            <button id="searchBtn" onclick="doSearch()">Ara</button>
-        </div>
+<!-- ============ HEADER ============ -->
+<div class="header">
+  <h1>🎬 Anime İzle</h1>
+  <span id="badge" class="badge connecting">Bağlanıyor...</span>
+</div>
 
-        <div class="error" id="errorBox"></div>
+<!-- ============ VIDEO ============ -->
+<div class="video-wrap">
+  <video id="video" playsinline preload="metadata"></video>
+  <div id="overlay" class="video-overlay">
+    <div class="icon">⏳</div>
+    <div class="msg">Bağlanılıyor...</div>
+  </div>
+</div>
 
-        <div class="results" id="results"></div>
+<!-- ============ DURUM ============ -->
+<div class="status-bar">
+  <span id="statusText">Bekleniyor</span>
+  <span id="liveBadge" class="live" style="display:none;">CANLI</span>
+</div>
 
-        <div class="player-section" id="playerSection">
-            <div class="player-header">
-                <div class="player-title" id="playerTitle">Anime</div>
-                <button class="player-close" onclick="closePlayer()">✕ Kapat</button>
-            </div>
+<!-- ============ ADMİN PANELİ ============ -->
+<div id="adminPanel" class="admin-panel">
+  <div class="section-title">Anime Ara</div>
+  <div class="search-box">
+    <input type="text" id="searchInput" placeholder="Anime adı yaz... (ör: rezero, naruto)" autocomplete="off">
+    <button id="searchBtn" onclick="doSearch()">Ara</button>
+  </div>
+  <div id="results" class="results"></div>
 
-            <div class="controls">
-                <label>Sunucu:</label>
-                <select id="serverSelect" onchange="reloadStream()">
-                    <option value="hd1">HD-1</option>
-                    <option value="hd2">HD-2</option>
-                    <option value="hd3">HD-3</option>
-                    <option value="hd4">HD-4</option>
-                    <option value="hd5">HD-5</option>
-                    <option value="hd6">HD-6</option>
-                </select>
+  <div class="section-title">Bölüm Seç</div>
+  <div class="controls">
+    <input type="number" id="epInput" value="1" min="1" max="9999">
+    <button id="loadBtn" onclick="loadEpisode()" disabled>Yükle ve Herkese Göster</button>
+    <span class="selected-name" id="selectedName">Anime seçilmedi</span>
+  </div>
 
-                <label>Mod:</label>
-                <select id="modeSelect" onchange="reloadStream()">
-                    <option value="sub">Altyazılı</option>
-                    <option value="dub">Dublaj</option>
-                </select>
+  <div class="section-title">Log</div>
+  <div id="logBox" class="log"></div>
+</div>
 
-                <label>Bölüm:</label>
-                <input type="number" id="epInput" min="1" value="1" style="width: 80px;" onchange="reloadStream()">
-            </div>
+<!-- ============ İZLEYİCİ BİLGİSİ ============ -->
+<div id="viewerInfo" class="viewer-info" style="display:none;">
+  <div class="big">📺</div>
+  <div>Admin bir video başlattığında otomatik olarak burada görünecek.</div>
+  <div style="margin-top:8px;font-size:11px;color:#444;">İzleyici modundasınız. Video kontrolleri admin tarafından yönetilir.</div>
+</div>
 
-            <div class="episode-picker" id="episodePicker"></div>
+<script>
+// ==========================================
+// DEVICE ID (kalıcı)
+// ==========================================
+const deviceId = (function () {
+  let id = localStorage.getItem("deviceId");
+  if (!id) {
+    id = "dev_" + Date.now().toString(36) + "_" + Math.random().toString(36).substring(2, 10);
+    localStorage.setItem("deviceId", id);
+  }
+  return id;
+})();
+console.log("📱 Device ID:", deviceId);
 
-            <div class="video-wrapper">
-                <iframe id="videoFrame" allowfullscreen allow="autoplay; fullscreen; encrypted-media"></iframe>
-            </div>
-        </div>
-    </div>
+// ==========================================
+// DOM
+// ==========================================
+const video = document.getElementById("video");
+const overlay = document.getElementById("overlay");
+const badge = document.getElementById("badge");
+const adminPanel = document.getElementById("adminPanel");
+const viewerInfo = document.getElementById("viewerInfo");
+const statusText = document.getElementById("statusText");
+const liveBadge = document.getElementById("liveBadge");
+const resultsBox = document.getElementById("results");
+const epInput = document.getElementById("epInput");
+const loadBtn = document.getElementById("loadBtn");
+const selectedName = document.getElementById("selectedName");
+const logBox = document.getElementById("logBox");
 
-    <script>
-        let currentAnime = null;
-        let searchTimeout = null;
+// ==========================================
+// STATE
+// ==========================================
+let socket = null;
+let isAdmin = false;
+let currentAnime = null;
+let hls = null;
+let syncing = false;
+let hasVideo = false;
 
-        // Enter ile ara
-        document.getElementById('searchInput').addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') doSearch();
-        });
+// ==========================================
+// LOG YARDIMCI
+// ==========================================
+function log(msg) {
+  const line = document.createElement("div");
+  line.className = "line";
+  const t = new Date().toLocaleTimeString("tr-TR");
+  line.textContent = `[${t}] ${msg}`;
+  logBox.appendChild(line);
+  logBox.scrollTop = logBox.scrollHeight;
+  while (logBox.children.length > 50) logBox.removeChild(logBox.firstChild);
+}
 
-        // Canlı arama (debounce)
-        document.getElementById('searchInput').addEventListener('input', (e) => {
-            if (searchTimeout) clearTimeout(searchTimeout);
-            const q = e.target.value.trim();
-            if (q.length < 2) return;
-            searchTimeout = setTimeout(() => doSearch(), 600);
-        });
+// ==========================================
+// SOCKET BAĞLANTISI
+// ==========================================
+function connectSocket() {
+  log("Socket bağlanıyor...");
+  socket = io({
+    transports: ["websocket", "polling"],
+    reconnection: true,
+    reconnectionDelay: 1000,
+    reconnectionAttempts: Infinity
+  });
 
-        async function doSearch() {
-            const q = document.getElementById('searchInput').value.trim();
-            if (!q || q.length < 2) {
-                showError('En az 2 karakter yaz');
-                return;
-            }
+  socket.on("connect", () => {
+    log("✅ Socket bağlandı: " + socket.id);
+    socket.emit("join", { deviceId });
+  });
 
-            const btn = document.getElementById('searchBtn');
-            btn.disabled = true;
-            btn.textContent = '...';
-            document.getElementById('results').innerHTML = '<div class="loading">🔍 Aranıyor...</div>';
-            hideError();
+  socket.on("disconnect", () => {
+    log("❌ Bağlantı koptu, yeniden deneniyor...");
+    badge.className = "badge connecting";
+    badge.textContent = "Bağlanıyor...";
+  });
 
-            try {
-                const res = await fetch(`/api/anime/search?q=${encodeURIComponent(q)}`);
-                const data = await res.json();
+  socket.on("connect_error", (err) => {
+    log("⚠️ Bağlantı hatası: " + err.message);
+  });
 
-                if (!data.results || data.results.length === 0) {
-                    document.getElementById('results').innerHTML = '<div class="loading">Sonuç bulunamadı</div>';
-                    return;
-                }
+  // ===== Kim olduğumuzu öğren =====
+  socket.on("you-are", (data) => {
+    isAdmin = !!data.isAdmin;
+    log(`🎭 Rol: ${isAdmin ? "ADMIN 👑" : "İZLEYİCİ 👤"} (admin: ${data.adminDeviceId})`);
 
-                renderResults(data.results);
-            } catch (e) {
-                showError('Arama hatası: ' + e.message);
-                document.getElementById('results').innerHTML = '';
-            } finally {
-                btn.disabled = false;
-                btn.textContent = 'Ara';
-            }
-        }
+    if (isAdmin) {
+      badge.className = "badge admin";
+      badge.textContent = "👑 ADMIN";
+      adminPanel.classList.add("show");
+      viewerInfo.style.display = "none";
+      // İlk yüklemede video yoksa overlay mesajı
+      if (!hasVideo) {
+        overlay.innerHTML = '<div class="icon">🎬</div><div class="msg">Anime ara ve bölüm seç.<br>Seçtiğinde herkese yayınlanacak.</div>';
+      }
+      statusText.textContent = "Admin modu";
+    } else {
+      badge.className = "badge viewer";
+      badge.textContent = "👤 İZLEYİCİ";
+      adminPanel.classList.remove("show");
+      viewerInfo.style.display = "block";
+      if (!hasVideo) {
+        overlay.innerHTML = '<div class="icon">⏳</div><div class="msg">Admin bekleniyor...<br>Video başlatıldığında otomatik görünecek.</div>';
+      }
+      statusText.textContent = "İzleyici modu";
+    }
+  });
 
-        function renderResults(results) {
-            const container = document.getElementById('results');
-            container.innerHTML = '';
+  // ===== Admin durumu güncellendi =====
+  socket.on("admin-status", (data) => {
+    log(`👥 Toplam cihaz: ${data.totalDevices}`);
+  });
 
-            results.forEach(anime => {
-                const card = document.createElement('div');
-                card.className = 'anime-card';
-                card.innerHTML = `
-                    <img src="${anime.poster}" alt="${anime.title}" onerror="this.style.display='none'">
-                    <div class="anime-info">
-                        <div class="anime-title">${escapeHtml(anime.title)}</div>
-                        <div class="anime-meta">${anime.format} • ${anime.year || '?'} • ${anime.episodes} bölüm</div>
-                    </div>
-                `;
-                card.onclick = () => selectAnime(anime);
-                container.appendChild(card);
-            });
-        }
+  // ===== Yeni video yüklendi =====
+  socket.on("video-load", (data) => {
+    log("🎬 Video yüklendi: " + data.title);
+    hasVideo = true;
+    overlay.classList.add("hidden");
+    liveBadge.style.display = "flex";
+    loadVideoSource(data.url);
+    if (data.title) statusText.textContent = data.title;
+  });
 
-        function selectAnime(anime) {
-            currentAnime = anime;
-            document.getElementById('playerSection').classList.add('active');
-            document.getElementById('playerTitle').textContent = anime.title;
+  // ===== Admin kontrol etti =====
+  socket.on("video-control", (data) => {
+    if (isAdmin) return; // admin kendi eventini geri uygulamasın
+    applyControl(data);
+  });
 
-            // Bölüm seçici doldur
-            const picker = document.getElementById('episodePicker');
-            picker.innerHTML = '';
+  // ===== İlk senkron (yeni izleyici) =====
+  socket.on("video-state", (data) => {
+    if (isAdmin) return;
+    if (!hasVideo) return;
+    setTimeout(() => applyControl(data), 500); // video yüklensin
+  });
 
-            const totalEps = anime.episodes || 1;
-            for (let i = 1; i <= totalEps; i++) {
-                const btn = document.createElement('button');
-                btn.className = 'ep-btn';
-                btn.textContent = i;
-                btn.onclick = () => selectEpisode(i);
-                picker.appendChild(btn);
-            }
+  socket.on("error-msg", (data) => {
+    log("⚠️ " + data.message);
+  });
+}
 
-            // İlk bölümü seç
-            selectEpisode(1);
+// ==========================================
+// VİDEO KAYNAĞI YÜKLE
+// ==========================================
+function loadVideoSource(rawUrl) {
+  if (hls) {
+    try { hls.destroy(); } catch (e) {}
+    hls = null;
+  }
+  video.pause();
+  video.removeAttribute("src");
+  video.load();
 
-            // Ekrana kaydır
-            document.getElementById('playerSection').scrollIntoView({ behavior: 'smooth' });
-        }
+  // Proxy'e sar
+  const proxyUrl = "/api/proxy?url=" + encodeURIComponent(rawUrl);
+  log("📡 Kaynak yükleniyor...");
 
-        function selectEpisode(ep) {
-            document.getElementById('epInput').value = ep;
+  if (Hls.isSupported()) {
+    hls = new Hls({
+      enableWorker: true,
+      lowLatencyMode: false,
+      maxBufferLength: 30
+    });
+    hls.loadSource(proxyUrl);
+    hls.attachMedia(video);
 
-            // Buton stillerini güncelle
-            document.querySelectorAll('.ep-btn').forEach((btn, i) => {
-                btn.classList.toggle('active', (i + 1) === ep);
-            });
+    hls.on(Hls.Events.MANIFEST_PARSED, () => {
+      log("✅ Manifest hazır");
+    });
 
-            reloadStream();
-        }
+    hls.on(Hls.Events.ERROR, (e, d) => {
+      if (d.fatal) {
+        log("❌ HLS hatası: " + d.details);
+        // Bir kez daha dene
+        setTimeout(() => {
+          if (hls) {
+            try { hls.startLoad(); } catch (x) {}
+          }
+        }, 2000);
+      }
+    });
+  } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
+    video.src = proxyUrl;
+  }
+}
 
-        async function reloadStream() {
-            if (!currentAnime) return;
+// ==========================================
+// KONTROL UYGULA (izleyici tarafı)
+// ==========================================
+function applyControl(data) {
+  if (!data || !data.action) return;
 
-            const ep = parseInt(document.getElementById('epInput').value) || 1;
-            const server = document.getElementById('serverSelect').value;
-            const mode = document.getElementById('modeSelect').value;
+  syncing = true;
+  const elapsed = data.at ? (Date.now() - data.at) / 1000 : 0;
 
-            const iframe = document.getElementById('videoFrame');
-            iframe.src = 'about:blank';
+  if (data.action === "play") {
+    const target = (data.currentTime || 0) + elapsed;
+    if (Math.abs(video.currentTime - target) > 1.5) {
+      video.currentTime = target;
+    }
+    video.play().catch(() => {});
+  } else if (data.action === "pause") {
+    video.pause();
+    if (Math.abs(video.currentTime - (data.currentTime || 0)) > 1.5) {
+      video.currentTime = data.currentTime || 0;
+    }
+  } else if (data.action === "seek") {
+    video.currentTime = data.currentTime || 0;
+  }
 
-            hideError();
+  setTimeout(() => { syncing = false; }, 400);
+}
 
-            try {
-                const res = await fetch(`/api/anime/stream?id=${currentAnime.id}&ep=${ep}&server=${server}&mode=${mode}`);
-                const data = await res.json();
+// ==========================================
+// ADMIN KONTROLLERİNİ BAĞLA
+// ==========================================
+video.addEventListener("play", () => {
+  if (!isAdmin || syncing) return;
+  socket.emit("video-control", {
+    action: "play",
+    currentTime: video.currentTime,
+    at: Date.now()
+  });
+});
 
-                if (data.error) {
-                    showError('Video yüklenemedi: ' + data.error);
-                    return;
-                }
+video.addEventListener("pause", () => {
+  if (!isAdmin || syncing) return;
+  socket.emit("video-control", {
+    action: "pause",
+    currentTime: video.currentTime,
+    at: Date.now()
+  });
+});
 
-                if (data.url) {
-                    iframe.src = data.url;
-                    console.log(`✅ ${data.server} → ${data.url}`);
-                }
-            } catch (e) {
-                showError('Bağlantı hatası: ' + e.message);
-            }
-        }
+video.addEventListener("seeked", () => {
+  if (!isAdmin || syncing) return;
+  socket.emit("video-control", {
+    action: "seek",
+    currentTime: video.currentTime,
+    at: Date.now()
+  });
+});
 
-        function closePlayer() {
-            document.getElementById('playerSection').classList.remove('active');
-            document.getElementById('videoFrame').src = 'about:blank';
-            currentAnime = null;
-        }
+// ==========================================
+// İZLEYİCİ: video kontrollerini gizle
+// ==========================================
+setInterval(() => {
+  if (video && !isAdmin) {
+    if (video.hasAttribute("controls")) video.removeAttribute("controls");
+  } else if (video && isAdmin) {
+    if (!video.hasAttribute("controls")) video.setAttribute("controls", "");
+  }
+}, 500);
 
-        function showError(msg) {
-            const box = document.getElementById('errorBox');
-            box.textContent = msg;
-            box.classList.add('active');
-        }
+// ==========================================
+// ARAMA
+// ==========================================
+async function doSearch() {
+  const q = document.getElementById("searchInput").value.trim();
+  if (q.length < 2) return;
 
-        function hideError() {
-            document.getElementById('errorBox').classList.remove('active');
-        }
+  const btn = document.getElementById("searchBtn");
+  btn.disabled = true;
+  btn.textContent = "...";
+  resultsBox.innerHTML = '<div style="padding:12px;color:#888;font-size:13px;">Aranıyor...</div>';
+  log("🔍 Aranıyor: " + q);
 
-        function escapeHtml(t) {
-            const d = document.createElement('div');
-            d.textContent = t;
-            return d.innerHTML;
-        }
-    </script>
+  try {
+    const r = await fetch("/api/search?q=" + encodeURIComponent(q));
+    const d = await r.json();
+
+    if (!d.results || d.results.length === 0) {
+      resultsBox.innerHTML = '<div style="padding:12px;color:#888;font-size:13px;">Sonuç bulunamadı</div>';
+      log("❌ Sonuç yok");
+      return;
+    }
+
+    resultsBox.innerHTML = "";
+    d.results.forEach((x) => {
+      const c = document.createElement("div");
+      c.className = "result";
+      c.innerHTML = `
+        <img src="${x.poster}" onerror="this.style.opacity=0.3">
+        <div class="result-title">${escapeHtml(x.title)}</div>
+      `;
+      c.onclick = () => selectAnime(x, c);
+      resultsBox.appendChild(c);
+    });
+
+    log(`✅ ${d.results.length} sonuç`);
+  } catch (e) {
+    resultsBox.innerHTML = '<div style="padding:12px;color:#e74c3c;font-size:13px;">Hata: ' + e.message + '</div>';
+    log("❌ Arama hatası: " + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Ara";
+  }
+}
+
+function selectAnime(anime, el) {
+  document.querySelectorAll(".result").forEach((x) => x.classList.remove("selected"));
+  el.classList.add("selected");
+  currentAnime = anime;
+  selectedName.textContent = anime.title;
+  epInput.max = anime.episodes || 9999;
+  epInput.value = 1;
+  loadBtn.disabled = false;
+  log("✅ Seçildi: " + anime.title);
+}
+
+// ==========================================
+// BÖLÜM YÜKLE
+// ==========================================
+async function loadEpisode() {
+  if (!currentAnime) {
+    alert("Önce anime seç");
+    return;
+  }
+
+  const ep = parseInt(epInput.value) || 1;
+  loadBtn.disabled = true;
+  loadBtn.textContent = "Yükleniyor... (15-30 sn)";
+  log(`🎬 Bölüm ${ep} için m3u8 çekiliyor...`);
+
+  try {
+    const r = await fetch(`/api/stream?id=${currentAnime.id}&ep=${ep}`);
+    const d = await r.json();
+
+    if (d.error) {
+      log("❌ " + d.error);
+      alert("Hata: " + d.error);
+      return;
+    }
+
+    log("✅ m3u8 alındı" + (d.cached ? " (cache)" : ""));
+
+    const title = `${currentAnime.title} — Bölüm ${ep}`;
+
+    // Önce kendi tarayıcımızda yükle
+    hasVideo = true;
+    overlay.classList.add("hidden");
+    liveBadge.style.display = "flex";
+    loadVideoSource(d.url);
+    statusText.textContent = title;
+
+    // Sonra sunucuya bildir → herkese yayınla
+    socket.emit("video-load", {
+      url: d.url,
+      title: title,
+      animeId: currentAnime.id,
+      episode: ep
+    });
+
+    log("📢 Odaya yayınlandı: " + title);
+  } catch (e) {
+    log("❌ " + e.message);
+    alert("Hata: " + e.message);
+  } finally {
+    loadBtn.disabled = false;
+    loadBtn.textContent = "Yükle ve Herkese Göster";
+  }
+}
+
+// ==========================================
+// ENTER İLE ARA
+// ==========================================
+document.getElementById("searchInput").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") doSearch();
+});
+
+// ==========================================
+// YARDIMCI
+// ==========================================
+function escapeHtml(t) {
+  const d = document.createElement("div");
+  d.textContent = t;
+  return d.innerHTML;
+}
+
+// ==========================================
+// BAŞLAT
+// ==========================================
+log("Uygulama başladı");
+connectSocket();
+
+// Sayfa yeniden görünür olduğunda senkron iste
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden && socket && socket.connected) {
+    socket.emit("request-sync");
+  }
+});
+
+// Online olduğunda yeniden bağlan
+window.addEventListener("online", () => {
+  if (socket && !socket.connected) socket.connect();
+});
+</script>
 </body>
 </html>
