@@ -1,13 +1,18 @@
 {
-  "name": "anime-test",
+  "name": "anime-stream",
   "version": "1.0.0",
-  "type": "module",
+  "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "postinstall": "playwright install chromium"
   },
   "dependencies": {
     "express": "^4.19.2",
-    "aniplay": "^1.0.1",
-    "cors": "^2.8.5"
+    "socket.io": "^4.7.5",
+    "cors": "^2.8.5",
+    "playwright": "^1.42.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
   }
 }
