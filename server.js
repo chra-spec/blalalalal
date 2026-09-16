@@ -107,8 +107,9 @@ async function getM3u8(vidnestUrl) {
     const urls = Array.from(found);
     if (urls.length === 0) return null;
     return urls.reduce((a, b) => a.length > b.length ? a : b);
-  } catch (e) {
-    console.error("getM3u8 hata:", e.message);
+} catch (e) {
+  console.error("❌ getM3u8 hata:", e.message);
+  console.error("📍 Stack:", e.stack);
     if (context) { try { await context.close(); } catch (x) {} }
     if (browserInstance) { try { await browserInstance.close(); } catch (x) {} browserInstance = null; }
     return null;
