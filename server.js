@@ -66,19 +66,32 @@ async function getM3u8(vidnestUrl) {
   let browser = null;
   let context = null;
   try {
-    console.log("🌐 Chromium başlatılıyor...");
+    const proxyUser = process.env.SCRAPINGANT_USER || "scrapingant";
+    const proxyPass = process.env.SCRAPINGANT_PASS;
+    
+    if (!proxyPass) {
+      console.error("❌ SCRAPINGANT_PASS env variable yok!");
+      return null;
+    }
+
+    console.log("🌐 Chromium + ScrapingAnt proxy...");
     browser = await chromium.launch({
       headless: true,
+      proxy: {
+        server: "http://proxy.scrapingant.com:8080",
+        username: proxyUser,
+        password: proxyPass
+      },
       args: [
         "--no-sandbox",
         "--disable-setuid-sandbox",
         "--disable-dev-shm-usage",
         "--disable-gpu",
-        "--disable-blink-features=AutomationControlled",
-        "--no-zygote"
+        "--no-zygote",
+        "--disable-blink-features=AutomationControlled"
       ]
     });
-    console.log("✅ Browser hazır");
+    console.log("✅ Browser + proxy hazır");
 
     context = await browser.newContext({
       userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -97,17 +110,16 @@ async function getM3u8(vidnestUrl) {
     });
 
     try {
-      await page.goto(vidnestUrl, {
-        waitUntil: "domcontentloaded",
-        timeout: 40000
-      });
+      await page.goto(vidnestUrl, { waitUntil: "domcontentloaded", timeout: 45000 });
     } catch (e) {
-      console.log("⚠️ Sayfa yükleme uyarısı:", e.message);
+      console.log("⚠️ Sayfa uyarısı:", e.message);
     }
 
     console.log("⏳ 15 saniye bekleniyor...");
     await page.waitForTimeout(15000);
 
+    const title = await page.title();
+    console.log("📄 Sayfa başlığı:", title);
     console.log("📊 Bulunan m3u8 sayısı:", found.size);
 
     await page.close();
@@ -125,6 +137,7 @@ async function getM3u8(vidnestUrl) {
     return null;
   }
 }
+
 // ==========================================
 // CURL YARDIMCI (Cloudflare bypass)
 // ==========================================
