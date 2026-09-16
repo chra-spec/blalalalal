@@ -1,10 +1,3 @@
-/**
- * ═══════════════════════════════════════════════════════════════
- * ANIME STREAM SERVER — v3.0 (ScrapingAnt API)
- * Playwright YOK, sadece HTTP API
- * ═══════════════════════════════════════════════════════════════
- */
-
 const express = require("express");
 const http = require("http");
 const { Server } = require("socket.io");
@@ -25,27 +18,22 @@ const io = new Server(server, {
 app.use(cors());
 app.use(express.static(__dirname));
 
-// ═══════════════════════════════════════════════════════════
-// CONFIG
-// ═══════════════════════════════════════════════════════════
-
 const CONFIG = {
   PORT: process.env.PORT || 3000,
   ADMIN_FILE: "/data/admin.json",
-  SA_KEY: process.env.SCRAPINGANT_PASS,
+  SA_KEY: "5afe1cef7c424ea4a815fed93182dbcd",
   SA_ENDPOINT: "https://api.scrapingant.com/v2/general",
   CACHE_TTL: 30 * 60 * 1000,
-  API_TIMEOUT: 60000
+  API_TIMEOUT: 60000,
+  QUEUE_TIMEOUT: 90000,
+  PROXY_COUNTRIES: ["us", "gb", "de"],
+  URL_VARIANTS: ["sub", "dub"]
 };
 
 function log(tag, msg) {
   const t = new Date().toISOString().slice(11, 23);
   console.log(`[${t}] ${tag} ${msg}`);
 }
-
-// ═══════════════════════════════════════════════════════════
-// ADMIN
-// ═══════════════════════════════════════════════════════════
 
 let adminDeviceId = null;
 
@@ -54,29 +42,26 @@ function loadAdmin() {
     if (fs.existsSync(CONFIG.ADMIN_FILE)) {
       const d = JSON.parse(fs.readFileSync(CONFIG.ADMIN_FILE, "utf8"));
       adminDeviceId = d.deviceId || null;
-      log("👑", `Admin yüklendi: ${adminDeviceId}`);
+      log("ADMIN", `Yuklendi: ${adminDeviceId}`);
     }
   } catch (e) {}
 }
+
 function saveAdmin() {
   try {
     fs.mkdirSync(path.dirname(CONFIG.ADMIN_FILE), { recursive: true });
-    fs.writeFileSync(CONFIG.ADMIN_FILE, JSON.stringify({ deviceId: adminDeviceId, createdAt: Date.now() }));
+    fs.writeFileSync(CONFIG.ADMIN_FILE, JSON.stringify({
+      deviceId: adminDeviceId,
+      createdAt: Date.now()
+    }));
   } catch (e) {}
 }
-loadAdmin();
 
-// ═══════════════════════════════════════════════════════════
-// STATE
-// ═══════════════════════════════════════════════════════════
+loadAdmin();
 
 let currentVideo = null;
 let currentState = { action: "pause", currentTime: 0, at: Date.now() };
 const m3u8Cache = new Map();
-
-// ═══════════════════════════════════════════════════════════
-// SERIAL QUEUE
-// ═══════════════════════════════════════════════════════════
 
 class SerialQueue {
   constructor() {
@@ -84,19 +69,37 @@ class SerialQueue {
     this.running = false;
     this.stats = { total: 0, done: 0, failed: 0 };
   }
-  async run(fn) {
+
+  run(fn) {
     return new Promise((resolve, reject) => {
-      const task = { fn, resolve, reject, id: ++this.stats.total, at: Date.now() };
+      const task = {
+        fn,
+        resolve,
+        reject,
+        id: ++this.stats.total,
+        at: Date.now()
+      };
       this.queue.push(task);
-      log("📥", `Kuyruk #${task.id} (bekleyen: ${this.queue.length})`);
+      log("QUEUE", `Eklendi #${task.id} (bekleyen: ${this.queue.length})`);
       this.process();
     });
   }
+
   async process() {
     if (this.running || this.queue.length === 0) return;
     this.running = true;
     const task = this.queue.shift();
-    log("⚙️", `İşleniyor #${task.id}`);
+
+    const waited = Date.now() - task.at;
+    if (waited > CONFIG.QUEUE_TIMEOUT) {
+      task.reject(new Error("queue timeout"));
+      this.running = false;
+      setImmediate(() => this.process());
+      return;
+    }
+
+    log("QUEUE", `Isleniyor #${task.id}`);
+
     try {
       const r = await task.fn();
       this.stats.done++;
@@ -109,28 +112,27 @@ class SerialQueue {
       setImmediate(() => this.process());
     }
   }
-  getStatus() {
-    return { queueLength: this.queue.length, running: this.running, stats: this.stats };
+
+  status() {
+    return {
+      queueLength: this.queue.length,
+      running: this.running,
+      stats: this.stats
+    };
   }
 }
+
 const scraperQueue = new SerialQueue();
 
-// ═══════════════════════════════════════════════════════════
-// SCRAPINGANT API ÇAĞRISI
-// ═══════════════════════════════════════════════════════════
-
-async function callScrapingAnt(targetUrl) {
-  if (!CONFIG.SA_KEY) {
-    log("❌", "SCRAPINGANT_PASS env yok");
-    return null;
-  }
+async function callScrapingAnt(targetUrl, country) {
+  if (!CONFIG.SA_KEY) return { html: null, status: 0, error: "no_key" };
 
   const params = new URLSearchParams({
     url: targetUrl,
     "x-api-key": CONFIG.SA_KEY,
     browser: "true",
     wait_until: "networkidle",
-    proxy_country: "us"
+    proxy_country: country || "us"
   });
 
   const apiUrl = `${CONFIG.SA_ENDPOINT}?${params.toString()}`;
@@ -141,95 +143,94 @@ async function callScrapingAnt(targetUrl) {
     const html = await r.text();
     const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
 
-    log("📥", `HTTP ${r.status} — ${elapsed}s — ${html.length} byte`);
+    log("API", `HTTP ${r.status} ${country || "us"} ${elapsed}s ${html.length}b`);
 
     if (!r.ok) {
-      if (html.includes("concurrency")) log("🚫", "Concurrency limit");
-      if (html.includes("plan")) log("🚫", "Plan limit");
-      return { html: null, status: r.status, elapsed, error: html.slice(0, 200) };
+      return {
+        html: null,
+        status: r.status,
+        elapsed,
+        error: html.slice(0, 200)
+      };
     }
 
     return { html, status: r.status, elapsed };
   } catch (e) {
     const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
-    log("❌", `${e.message.slice(0, 100)} — ${elapsed}s`);
+    log("API", `Hata ${e.message.slice(0, 80)} ${elapsed}s`);
     return { html: null, status: 0, elapsed, error: e.message };
   }
 }
 
-// ═══════════════════════════════════════════════════════════
-// M3U8 ÇIKAR (regex)
-// ═══════════════════════════════════════════════════════════
-
 function extractM3u8(html) {
   if (!html) return null;
-
   const regex = /https?:\/\/[^"'\s\\<>]+\.m3u8[^"'\s\\<>]*/g;
   const matches = html.match(regex) || [];
-
   const filtered = matches.filter((u) =>
     !u.includes("index-f1") &&
     !u.includes("iframes") &&
     !u.includes("segment")
   );
-
   if (filtered.length === 0) return null;
-
-  // En uzun (genelde master playlist)
   return filtered.reduce((a, b) => a.length > b.length ? a : b);
 }
 
-// ═══════════════════════════════════════════════════════════
-// ANA AKIŞ: sub → dub fallback
-// ═══════════════════════════════════════════════════════════
+function isCloudflareBlock(html) {
+  if (!html) return false;
+  return html.includes("Attention Required") ||
+         html.includes("you have been blocked") ||
+         html.includes("Just a moment");
+}
+
+function isConcurrencyError(html) {
+  if (!html) return false;
+  return html.includes("concurrency") || html.includes("Free user concurrency");
+}
 
 async function fetchM3u8(animeId, episode) {
-  const variants = [
-    { url: `https://vidnest.fun/anime/${animeId}/${episode}/sub`, label: "sub" },
-    { url: `https://vidnest.fun/anime/${animeId}/${episode}/dub`, label: "dub" }
-  ];
+  const baseUrl = `https://vidnest.fun/anime/${animeId}/${episode}`;
 
-  for (const v of variants) {
-    log("🌐", `${v.label} — API çağrılıyor`);
+  for (const variant of CONFIG.URL_VARIANTS) {
+    const targetUrl = `${baseUrl}/${variant}`;
 
-    const result = await callScrapingAnt(v.url);
+    for (const country of CONFIG.PROXY_COUNTRIES) {
+      log("TRY", `${variant} / ${country}`);
 
-    if (!result.html) {
-      if (result.error && result.error.includes("concurrency")) {
-        log("⏸️", "Concurrency limit, 3s bekleyip tekrar");
-        await new Promise((r) => setTimeout(r, 3000));
-        const retry = await callScrapingAnt(v.url);
-        if (retry.html) {
+      const result = await callScrapingAnt(targetUrl, country);
+
+      if (result.html && isConcurrencyError(result.html)) {
+        log("RETRY", "Concurrency limit, 4s bekle");
+        await new Promise((r) => setTimeout(r, 4000));
+        const retry = await callScrapingAnt(targetUrl, country);
+        if (retry.html && !isConcurrencyError(retry.html)) {
           const m3u8 = extractM3u8(retry.html);
           if (m3u8) {
-            log("✅", `${v.label} — BULUNDU (retry)`);
+            log("OK", `${variant}/${country} retry ile`);
             return m3u8;
           }
         }
+        continue;
       }
-      continue;
-    }
 
-    if (result.html.includes("Attention Required") || result.html.includes("you have been blocked")) {
-      log("🚫", `${v.label} — Cloudflare block`);
-      continue;
-    }
+      if (!result.html) continue;
 
-    const m3u8 = extractM3u8(result.html);
-    if (m3u8) {
-      log("✅", `${v.label} — BULUNDU`);
-      return m3u8;
-    }
+      if (isCloudflareBlock(result.html)) {
+        log("BLOCK", `${variant}/${country} Cloudflare`);
+        continue;
+      }
 
-    log("⚠️", `${v.label} — m3u8 yok (HTML ${result.html.length} byte)`);
+      const m3u8 = extractM3u8(result.html);
+      if (m3u8) {
+        log("OK", `${variant}/${country}`);
+        return m3u8;
+      }
+
+      log("MISS", `${variant}/${country} m3u8 yok`);
+    }
   }
 
   return null;
 }
-
-// ═══════════════════════════════════════════════════════════
-// CURL (m3u8 + segment proxy)
-// ═══════════════════════════════════════════════════════════
 
 function curlFetch(url) {
   return new Promise((resolve) => {
@@ -249,10 +250,6 @@ function curlFetch(url) {
     proc.on("error", () => resolve(null));
   });
 }
-
-// ═══════════════════════════════════════════════════════════
-// API: SEARCH
-// ═══════════════════════════════════════════════════════════
 
 app.get("/api/search", async (req, res) => {
   try {
@@ -284,14 +281,9 @@ app.get("/api/search", async (req, res) => {
       }))
     });
   } catch (e) {
-    log("❌", `Search: ${e.message}`);
     res.json({ results: [], error: e.message });
   }
 });
-
-// ═══════════════════════════════════════════════════════════
-// API: STREAM
-// ═══════════════════════════════════════════════════════════
 
 app.get("/api/stream", async (req, res) => {
   try {
@@ -300,29 +292,28 @@ app.get("/api/stream", async (req, res) => {
 
     const key = `${id}_${ep}`;
     if (m3u8Cache.has(key)) {
-      log("⚡", `Cache: ${key}`);
+      log("CACHE", key);
       return res.json({ url: m3u8Cache.get(key), cached: true });
     }
 
-    log("🎬", `Stream: ${key}`);
+    log("STREAM", key);
     const m3u8 = await scraperQueue.run(() => fetchM3u8(id, ep));
 
-    if (!m3u8) return res.json({ error: "Video bulunamadı. Farklı bölüm/anime deneyin." });
+    if (!m3u8) {
+      return res.json({
+        error: "Video bulunamadi. Farkli bolum veya anime deneyin."
+      });
+    }
 
     m3u8Cache.set(key, m3u8);
     setTimeout(() => m3u8Cache.delete(key), CONFIG.CACHE_TTL);
 
-    log("✅", `Stream OK: ${key}`);
+    log("STREAM", `OK ${key}`);
     res.json({ url: m3u8 });
   } catch (e) {
-    log("❌", `Stream: ${e.message}`);
     res.json({ error: e.message || "Hata" });
   }
 });
-
-// ═══════════════════════════════════════════════════════════
-// API: PROXY
-// ═══════════════════════════════════════════════════════════
 
 app.get("/api/proxy", async (req, res) => {
   try {
@@ -349,7 +340,9 @@ app.get("/api/proxy", async (req, res) => {
             try {
               const abs = new URL(uri, baseUrl).toString();
               return 'URI="/api/proxy?url=' + encodeURIComponent(abs) + '"';
-            } catch (e) { return 'URI="' + uri + '"'; }
+            } catch (e) {
+              return 'URI="' + uri + '"';
+            }
           });
         }
         if (!line || line.startsWith("#")) return line;
@@ -357,7 +350,9 @@ app.get("/api/proxy", async (req, res) => {
         if (!x) return line;
         try {
           return "/api/proxy?url=" + encodeURIComponent(new URL(x, baseUrl).toString());
-        } catch (e) { return line; }
+        } catch (e) {
+          return line;
+        }
       });
 
       res.setHeader("Content-Type", "application/vnd.apple.mpegurl");
@@ -367,71 +362,67 @@ app.get("/api/proxy", async (req, res) => {
     res.setHeader("Content-Type", "video/mp2t");
     res.send(buf);
   } catch (e) {
-    res.status(500).send("hata: " + e.message);
+    res.status(500).send("hata");
   }
 });
 
-// ═══════════════════════════════════════════════════════════
-// API: DEBUG
-// ═══════════════════════════════════════════════════════════
-
 app.get("/api/debug", async (req, res) => {
   const url = req.query.url || "https://vidnest.fun/anime/21355/1/sub";
-  const result = await callScrapingAnt(url);
+  const country = req.query.country || "us";
+  const result = await callScrapingAnt(url, country);
   const m3u8 = extractM3u8(result.html);
+
   res.json({
     url,
+    country,
     status: result.status,
     elapsed: result.elapsed + "s",
     htmlLength: result.html ? result.html.length : 0,
-    hasCloudflare: result.html ? result.html.includes("Attention Required") : false,
-    hasConcurrency: result.html ? result.html.includes("concurrency") : false,
+    cloudflare: isCloudflareBlock(result.html),
+    concurrency: isConcurrencyError(result.html),
     m3u8Found: !!m3u8,
     m3u8Sample: m3u8,
     error: result.error || null,
-    htmlSample: result.html ? result.html.substring(0, 400) : null
+    htmlHead: result.html ? result.html.substring(0, 300) : null
   });
 });
-
-// ═══════════════════════════════════════════════════════════
-// HEALTH
-// ═══════════════════════════════════════════════════════════
 
 app.get("/health", (req, res) => {
   res.json({
     status: "ok",
     uptime: Math.round(process.uptime()),
     admin: adminDeviceId,
-    proxy: !!CONFIG.SA_KEY,
+    apiKey: !!CONFIG.SA_KEY,
     cache: m3u8Cache.size,
-    queue: scraperQueue.getStatus(),
-    mem: Math.round(process.memoryUsage().heapUsed / 1024 / 1024) + " MB"
+    queue: scraperQueue.status(),
+    mem: Math.round(process.memoryUsage().heapUsed / 1024 / 1024) + "MB"
   });
 });
-
-// ═══════════════════════════════════════════════════════════
-// SOCKET.IO
-// ═══════════════════════════════════════════════════════════
 
 function isAdminSocket(socket) {
   return socket.data && socket.data.deviceId === adminDeviceId;
 }
+
 function broadcastAdminStatus() {
-  io.emit("admin-status", { adminDeviceId, totalDevices: io.sockets.sockets.size });
+  io.emit("admin-status", {
+    adminDeviceId,
+    totalDevices: io.sockets.sockets.size
+  });
 }
 
 io.on("connection", (socket) => {
-  log("🔌", `Socket: ${socket.id}`);
+  log("SOCKET", socket.id);
 
   socket.on("join", (data) => {
     const deviceId = data && data.deviceId ? String(data.deviceId) : null;
     if (!deviceId) return socket.emit("error-msg", { message: "deviceId gerekli" });
 
     socket.data.deviceId = deviceId;
+
     if (!adminDeviceId) {
       adminDeviceId = deviceId;
       saveAdmin();
-      log("👑", `Yeni admin: ${deviceId}`);
+      log("ADMIN", `Yeni: ${deviceId}`);
     }
 
     const isAdmin = deviceId === adminDeviceId;
@@ -443,12 +434,13 @@ io.on("connection", (socket) => {
       socket.emit("video-state", currentState);
     }
 
-    log(isAdmin ? "👑" : "👤", `${deviceId}`);
+    log("JOIN", `${isAdmin ? "ADMIN" : "VIEWER"} ${deviceId}`);
   });
 
   socket.on("video-load", (data) => {
     if (!isAdminSocket(socket)) return;
     if (!data || !data.url) return;
+
     currentVideo = {
       url: data.url,
       title: data.title || "Video",
@@ -457,16 +449,22 @@ io.on("connection", (socket) => {
       startedAt: Date.now()
     };
     currentState = { action: "play", currentTime: 0, at: Date.now() };
+
     socket.broadcast.emit("video-load", currentVideo);
-    log("🎬", `Yayınlandı: ${currentVideo.title}`);
+    log("LOAD", currentVideo.title);
   });
 
   socket.on("video-control", (data) => {
     if (!isAdminSocket(socket)) return;
     if (!data || !data.action) return;
-    currentState = { action: data.action, currentTime: data.currentTime || 0, at: Date.now() };
+
+    currentState = {
+      action: data.action,
+      currentTime: data.currentTime || 0,
+      at: Date.now()
+    };
     socket.broadcast.emit("video-control", currentState);
-    log("⏯️", `${data.action} @ ${(data.currentTime || 0).toFixed(1)}s`);
+    log("CTRL", `${data.action} @ ${(data.currentTime || 0).toFixed(1)}s`);
   });
 
   socket.on("request-sync", () => {
@@ -477,23 +475,24 @@ io.on("connection", (socket) => {
   });
 
   socket.on("disconnect", () => {
-    log("❌", `Ayrıldı: ${socket.data.deviceId || socket.id}`);
+    log("LEFT", socket.data.deviceId || socket.id);
     broadcastAdminStatus();
   });
 });
 
-// ═══════════════════════════════════════════════════════════
-// START
-// ═══════════════════════════════════════════════════════════
-
 server.listen(CONFIG.PORT, "0.0.0.0", () => {
-  console.log("═══════════════════════════════════════════");
-  console.log(`🚀 Sunucu ${CONFIG.PORT} portunda`);
-  console.log(`👑 Admin: ${adminDeviceId || "(ilk girene)"}`);
-  console.log(`🔒 ScrapingAnt: ${CONFIG.SA_KEY ? "AKTİF" : "YOK"}`);
-  console.log("═══════════════════════════════════════════");
+  console.log("===========================================");
+  console.log(`Sunucu ${CONFIG.PORT} portunda`);
+  console.log(`Admin: ${adminDeviceId || "(ilk girene)"}`);
+  console.log(`API Key: ${CONFIG.SA_KEY ? "AKTIF" : "YOK"}`);
+  console.log(`Ulkeler: ${CONFIG.PROXY_COUNTRIES.join(", ")}`);
+  console.log("===========================================");
 });
 
-process.on("SIGTERM", () => { io.close(); server.close(() => process.exit(0)); });
-process.on("uncaughtException", (e) => log("💥", e.message));
-process.on("unhandledRejection", (e) => log("💥", e && e.message ? e.message : e));
+process.on("SIGTERM", () => {
+  io.close();
+  server.close(() => process.exit(0));
+});
+
+process.on("uncaughtException", (e) => log("ERR", e.message));
+process.on("unhandledRejection", (e) => log("REJ", e && e.message ? e.message : e));
