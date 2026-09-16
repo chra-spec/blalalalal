@@ -1,20 +1,7 @@
 /**
  * ═══════════════════════════════════════════════════════════════
- * ANIME STREAM SERVER — v2.0 (Robust)
- * ═══════════════════════════════════════════════════════════════
- * 
- * MİMARİ:
- *   Client → /api/stream → [KUYRUK] → scraper → m3u8 döner
- *   Client → /api/proxy  → [CURL]   → segment stream
- * 
- * PROXY STRATEJİSİ (Plan A/B/C):
- *   Plan A: ScrapingAnt proxy (env varsa)
- *   Plan B: Direct connection (proxy yoksa)
- *   Plan C: Proxy başarısızsa direct retry
- * 
- * RETRY POLİTİKASI:
- *   Her URL şeması için 2 deneme
- *   2 farklı URL şeması × 2 deneme = 4 max deneme
+ * ANIME STREAM SERVER — v3.0 (ScrapingAnt API)
+ * Playwright YOK, sadece HTTP API
  * ═══════════════════════════════════════════════════════════════
  */
 
@@ -25,7 +12,6 @@ const cors = require("cors");
 const { spawn } = require("child_process");
 const fs = require("fs");
 const path = require("path");
-const { chromium } = require("playwright");
 
 const app = express();
 const server = http.createServer(app);
@@ -33,46 +19,24 @@ const io = new Server(server, {
   cors: { origin: "*" },
   maxHttpBufferSize: 50 * 1024 * 1024,
   pingTimeout: 60000,
-  pingInterval: 25000,
-  connectTimeout: 45000
+  pingInterval: 25000
 });
 
 app.use(cors());
 app.use(express.static(__dirname));
 
 // ═══════════════════════════════════════════════════════════
-// YAPILANDIRMA
+// CONFIG
 // ═══════════════════════════════════════════════════════════
 
 const CONFIG = {
   PORT: process.env.PORT || 3000,
   ADMIN_FILE: "/data/admin.json",
-  
-  // ScrapingAnt proxy (env varsa aktif)
-  PROXY_ENABLED: !!process.env.SCRAPINGANT_PASS,
-  PROXY_SERVER: "http://proxy.scrapingant.com:8080",
-  PROXY_USER: process.env.SCRAPINGANT_USER || "scrapingant",
-  PROXY_PASS: process.env.SCRAPINGANT_PASS,
-  
-  // Zamanlamalar (ms)
-  PAGE_GOTO_TIMEOUT: 30000,
-  M3U8_CAPTURE_TIMEOUT: 25000,  // Erken çıkış için
-  POST_GOTO_WAIT: 3000,          // Sayfa yüklenince biraz bekle
-  
-  // Retry
-  MAX_RETRIES_PER_URL: 2,
-  RETRY_DELAY: 1500,
-  
-  // Cache
-  CACHE_TTL: 30 * 60 * 1000,     // 30 dk
-  
-  // Kuyruk
-  QUEUE_TIMEOUT: 90 * 1000       // 90 sn max bekleme
+  SA_KEY: process.env.SCRAPINGANT_PASS,
+  SA_ENDPOINT: "https://api.scrapingant.com/v2/general",
+  CACHE_TTL: 30 * 60 * 1000,
+  API_TIMEOUT: 60000
 };
-
-// ═══════════════════════════════════════════════════════════
-// LOGGER (zaman damgalı)
-// ═══════════════════════════════════════════════════════════
 
 function log(tag, msg) {
   const t = new Date().toISOString().slice(11, 23);
@@ -80,7 +44,7 @@ function log(tag, msg) {
 }
 
 // ═══════════════════════════════════════════════════════════
-// ADMIN KALICILIĞI
+// ADMIN
 // ═══════════════════════════════════════════════════════════
 
 let adminDeviceId = null;
@@ -94,23 +58,16 @@ function loadAdmin() {
     }
   } catch (e) {}
 }
-
 function saveAdmin() {
   try {
     fs.mkdirSync(path.dirname(CONFIG.ADMIN_FILE), { recursive: true });
-    fs.writeFileSync(CONFIG.ADMIN_FILE, JSON.stringify({
-      deviceId: adminDeviceId,
-      createdAt: Date.now()
-    }));
-  } catch (e) {
-    // /data yoksa sessiz geç
-  }
+    fs.writeFileSync(CONFIG.ADMIN_FILE, JSON.stringify({ deviceId: adminDeviceId, createdAt: Date.now() }));
+  } catch (e) {}
 }
-
 loadAdmin();
 
 // ═══════════════════════════════════════════════════════════
-// VIDEO DURUMU
+// STATE
 // ═══════════════════════════════════════════════════════════
 
 let currentVideo = null;
@@ -118,284 +75,160 @@ let currentState = { action: "pause", currentTime: 0, at: Date.now() };
 const m3u8Cache = new Map();
 
 // ═══════════════════════════════════════════════════════════
-// KUYRUK SİSTEMİ (ScrapingAnt concurrency=1 için)
+// SERIAL QUEUE
 // ═══════════════════════════════════════════════════════════
 
 class SerialQueue {
-  constructor(name) {
-    this.name = name;
+  constructor() {
     this.queue = [];
     this.running = false;
     this.stats = { total: 0, done: 0, failed: 0 };
   }
-
   async run(fn) {
     return new Promise((resolve, reject) => {
-      const task = {
-        fn,
-        resolve,
-        reject,
-        enqueuedAt: Date.now(),
-        id: ++this.stats.total
-      };
+      const task = { fn, resolve, reject, id: ++this.stats.total, at: Date.now() };
       this.queue.push(task);
-      log("📥", `Kuyruğa eklendi #${task.id} (bekleyen: ${this.queue.length})`);
+      log("📥", `Kuyruk #${task.id} (bekleyen: ${this.queue.length})`);
       this.process();
     });
   }
-
   async process() {
-    if (this.running) return;
-    if (this.queue.length === 0) return;
-
+    if (this.running || this.queue.length === 0) return;
     this.running = true;
     const task = this.queue.shift();
-
-    // Timeout kontrolü
-    const waited = Date.now() - task.enqueuedAt;
-    if (waited > CONFIG.QUEUE_TIMEOUT) {
-      log("⏰", `Kuyruk timeout #${task.id}`);
-      task.reject(new Error("queue timeout"));
-      this.running = false;
-      this.process();
-      return;
-    }
-
-    log("⚙️", `İşleniyor #${task.id} (bekleme: ${((waited) / 1000).toFixed(1)}s)`);
-
+    log("⚙️", `İşleniyor #${task.id}`);
     try {
-      const result = await task.fn();
+      const r = await task.fn();
       this.stats.done++;
-      task.resolve(result);
+      task.resolve(r);
     } catch (e) {
       this.stats.failed++;
-      log("❌", `Task #${task.id} hata: ${e.message.slice(0, 100)}`);
       task.reject(e);
     } finally {
       this.running = false;
-      // Sonraki iş için event loop'a bırak
       setImmediate(() => this.process());
     }
   }
-
   getStatus() {
-    return {
-      queueLength: this.queue.length,
-      running: this.running,
-      stats: this.stats
-    };
+    return { queueLength: this.queue.length, running: this.running, stats: this.stats };
   }
 }
-
-const scraperQueue = new SerialQueue("scraper");
-
-// ═══════════════════════════════════════════════════════════
-// BROWSER LAUNCH (her istekte taze)
-// ═══════════════════════════════════════════════════════════
-
-function getBrowserArgs() {
-  return [
-    "--no-sandbox",
-    "--disable-setuid-sandbox",
-    "--disable-dev-shm-usage",
-    "--disable-gpu",
-    "--no-zygote",
-    "--disable-blink-features=AutomationControlled",
-    "--ignore-certificate-errors",
-    "--ignore-ssl-errors",
-    "--disable-features=IsolateOrigins,site-per-process",
-    "--disable-web-security",
-    "--disable-background-timer-throttling",
-    "--disable-backgrounding-occluded-windows",
-    "--disable-renderer-backgrounding"
-  ];
-}
-
-function getProxyConfig() {
-  if (!CONFIG.PROXY_ENABLED) return undefined;
-  return {
-    server: CONFIG.PROXY_SERVER,
-    username: CONFIG.PROXY_USER,
-    password: CONFIG.PROXY_PASS
-  };
-}
-
-async function launchBrowser() {
-  return chromium.launch({
-    headless: true,
-    proxy: getProxyConfig(),
-    args: getBrowserArgs()
-  });
-}
+const scraperQueue = new SerialQueue();
 
 // ═══════════════════════════════════════════════════════════
-// M3U8 YAKALAMA (tek deneme)
+// SCRAPINGANT API ÇAĞRISI
 // ═══════════════════════════════════════════════════════════
 
-async function captureM3u8(vidnestUrl, attemptLabel) {
-  const t0 = Date.now();
-  let browser = null;
-  let context = null;
-  let page = null;
-
-  try {
-    log("🌐", `${attemptLabel} — browser açılıyor`);
-    browser = await launchBrowser();
-
-    context = await browser.newContext({
-      userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-      viewport: { width: 1280, height: 720 },
-      locale: "en-US",
-      ignoreHTTPSErrors: true,
-      bypassCSP: true
-    });
-
-    page = await context.newPage();
-
-    let captured = null;
-    let resolveCapture = null;
-    let captureResolved = false;
-
-    const capturePromise = new Promise((res) => { resolveCapture = res; });
-
-    page.on("request", (req) => {
-      const u = req.url();
-      if (u.includes(".m3u8") && !u.includes("index-f1") && !u.includes("iframes")) {
-        // En uzun URL'yi tercih et (genelde master playlist)
-        if (!captured || u.length > captured.length) {
-          captured = u;
-          if (!captureResolved) {
-            captureResolved = true;
-            if (resolveCapture) resolveCapture(u);
-          }
-        }
-      }
-    });
-
-    // Sayfa yükleme (goto) — başarısız olsa bile video yüklenebilir
-    const gotoPromise = page.goto(vidnestUrl, {
-      waitUntil: "domcontentloaded",
-      timeout: CONFIG.PAGE_GOTO_TIMEOUT
-    }).catch((e) => {
-      log("⚠️", `${attemptLabel} — goto: ${e.message.slice(0, 80)}`);
-      return null;
-    });
-
-    // Erken yakalama: m3u8 gelirse hemen dön
-    const timeoutPromise = new Promise((res) =>
-      setTimeout(() => res(null), CONFIG.M3U8_CAPTURE_TIMEOUT)
-    );
-
-    const result = await Promise.race([capturePromise, timeoutPromise]);
-
-    const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
-    log(result ? "✅" : "❌", `${attemptLabel} — ${elapsed}s — m3u8: ${result ? "BULUNDU" : "YOK"}`);
-
-    return result;
-  } catch (e) {
-    const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
-    log("❌", `${attemptLabel} — ${elapsed}s — ${e.message.slice(0, 100)}`);
-    return null;
-  } finally {
-    // ⚡ GARANTİLİ TEMİZLİK — proxy slotunu serbest bırak
-    if (page) { try { await page.close(); } catch (x) {} }
-    if (context) { try { await context.close(); } catch (x) {} }
-    if (browser) { try { await browser.close(); } catch (x) {} }
-    log("🔒", `${attemptLabel} — temizlendi (${((Date.now() - t0) / 1000).toFixed(1)}s)`);
-  }
-}
-
-// ═══════════════════════════════════════════════════════════
-// M3U8 STRATEJİSİ (URL şemaları + retry)
-// ═══════════════════════════════════════════════════════════
-
-// ═══════════════════════════════════════════════════════════
-// M3U8 ÇEK — ScrapingAnt API (Playwright'sız)
-// ═══════════════════════════════════════════════════════════
-
-async function fetchM3u8WithRetry(animeId, episode) {
-  const apiKey = CONFIG.PROXY_PASS; // ScrapingAnt API key
-
-  if (!apiKey) {
+async function callScrapingAnt(targetUrl) {
+  if (!CONFIG.SA_KEY) {
     log("❌", "SCRAPINGANT_PASS env yok");
     return null;
   }
 
-  // URL şemaları
+  const params = new URLSearchParams({
+    url: targetUrl,
+    "x-api-key": CONFIG.SA_KEY,
+    browser: "true",
+    wait_until: "networkidle",
+    proxy_country: "us"
+  });
+
+  const apiUrl = `${CONFIG.SA_ENDPOINT}?${params.toString()}`;
+  const t0 = Date.now();
+
+  try {
+    const r = await fetch(apiUrl, { signal: AbortSignal.timeout(CONFIG.API_TIMEOUT) });
+    const html = await r.text();
+    const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
+
+    log("📥", `HTTP ${r.status} — ${elapsed}s — ${html.length} byte`);
+
+    if (!r.ok) {
+      if (html.includes("concurrency")) log("🚫", "Concurrency limit");
+      if (html.includes("plan")) log("🚫", "Plan limit");
+      return { html: null, status: r.status, elapsed, error: html.slice(0, 200) };
+    }
+
+    return { html, status: r.status, elapsed };
+  } catch (e) {
+    const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
+    log("❌", `${e.message.slice(0, 100)} — ${elapsed}s`);
+    return { html: null, status: 0, elapsed, error: e.message };
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+// M3U8 ÇIKAR (regex)
+// ═══════════════════════════════════════════════════════════
+
+function extractM3u8(html) {
+  if (!html) return null;
+
+  const regex = /https?:\/\/[^"'\s\\<>]+\.m3u8[^"'\s\\<>]*/g;
+  const matches = html.match(regex) || [];
+
+  const filtered = matches.filter((u) =>
+    !u.includes("index-f1") &&
+    !u.includes("iframes") &&
+    !u.includes("segment")
+  );
+
+  if (filtered.length === 0) return null;
+
+  // En uzun (genelde master playlist)
+  return filtered.reduce((a, b) => a.length > b.length ? a : b);
+}
+
+// ═══════════════════════════════════════════════════════════
+// ANA AKIŞ: sub → dub fallback
+// ═══════════════════════════════════════════════════════════
+
+async function fetchM3u8(animeId, episode) {
   const variants = [
     { url: `https://vidnest.fun/anime/${animeId}/${episode}/sub`, label: "sub" },
     { url: `https://vidnest.fun/anime/${animeId}/${episode}/dub`, label: "dub" }
   ];
 
-  for (const variant of variants) {
-    try {
-      const t0 = Date.now();
-      log("🌐", `${variant.label} — ScrapingAnt API çağrılıyor`);
+  for (const v of variants) {
+    log("🌐", `${v.label} — API çağrılıyor`);
 
-      // ScrapingAnt v2 General endpoint
-      const params = new URLSearchParams({
-        url: variant.url,
-        "x-api-key": apiKey,
-        browser: "true",              // JS render
-        wait_until: "networkidle",    // Ağ boşalana kadar bekle (m3u8 yakalanır)
-        proxy_country: "us",
-        block_resource: "image,media,font,stylesheet" // Hız için görselleri engelle
-      });
+    const result = await callScrapingAnt(v.url);
 
-      const apiUrl = `https://api.scrapingant.com/v2/general?${params.toString()}`;
-      log("🔗", `API: ${apiUrl.slice(0, 100)}...`);
-
-      const r = await fetch(apiUrl, { signal: AbortSignal.timeout(60000) });
-      const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
-
-      if (!r.ok) {
-        const errText = await r.text().catch(() => "");
-        log("❌", `${variant.label} — HTTP ${r.status} — ${errText.slice(0, 150)}`);
-        continue;
-      }
-
-      const html = await r.text();
-      log("📥", `${variant.label} — ${elapsed}s — HTML ${html.length} byte`);
-
-      // m3u8 regex ile ara
-      const m3u8Regex = /https?:\/\/[^"'\s\\<>]+\.m3u8[^"'\s\\<>]*/g;
-      const matches = html.match(m3u8Regex) || [];
-
-      // Master playlist'leri tercih et, segment'leri atla
-      const filtered = matches.filter((u) =>
-        !u.includes("index-f1") &&
-        !u.includes("iframes") &&
-        !u.includes("segment")
-      );
-
-      if (filtered.length === 0) {
-        log("⚠️", `${variant.label} — m3u8 yok (HTML ${html.length} byte)`);
-        // HTML'in başını logla (debug)
-        if (html.includes("Attention Required")) {
-          log("🚫", `${variant.label} — Cloudflare block`);
-        } else if (html.includes("concurrency limit")) {
-          log("🚫", `${variant.label} — Concurrency limit`);
+    if (!result.html) {
+      if (result.error && result.error.includes("concurrency")) {
+        log("⏸️", "Concurrency limit, 3s bekleyip tekrar");
+        await new Promise((r) => setTimeout(r, 3000));
+        const retry = await callScrapingAnt(v.url);
+        if (retry.html) {
+          const m3u8 = extractM3u8(retry.html);
+          if (m3u8) {
+            log("✅", `${v.label} — BULUNDU (retry)`);
+            return m3u8;
+          }
         }
-        continue;
       }
-
-      // En uzun URL genelde master playlist
-      const best = filtered.reduce((a, b) => a.length > b.length ? a : b);
-      log("✅", `${variant.label} — ${elapsed}s — BULUNDU (${filtered.length} aday)`);
-      return best;
-
-    } catch (e) {
-      log("❌", `${variant.label} — ${e.message.slice(0, 100)}`);
-      // Devam et, sonraki varyantı dene
+      continue;
     }
+
+    if (result.html.includes("Attention Required") || result.html.includes("you have been blocked")) {
+      log("🚫", `${v.label} — Cloudflare block`);
+      continue;
+    }
+
+    const m3u8 = extractM3u8(result.html);
+    if (m3u8) {
+      log("✅", `${v.label} — BULUNDU`);
+      return m3u8;
+    }
+
+    log("⚠️", `${v.label} — m3u8 yok (HTML ${result.html.length} byte)`);
   }
 
-  log("❌", "Tüm varyantlar başarısız");
   return null;
 }
 
 // ═══════════════════════════════════════════════════════════
-// CURL YARDIMCI (m3u8 proxy)
+// CURL (m3u8 + segment proxy)
 // ═══════════════════════════════════════════════════════════
 
 function curlFetch(url) {
@@ -418,7 +251,7 @@ function curlFetch(url) {
 }
 
 // ═══════════════════════════════════════════════════════════
-// API: ANİME ARA (AniList)
+// API: SEARCH
 // ═══════════════════════════════════════════════════════════
 
 app.get("/api/search", async (req, res) => {
@@ -457,7 +290,7 @@ app.get("/api/search", async (req, res) => {
 });
 
 // ═══════════════════════════════════════════════════════════
-// API: STREAM (m3u8 çek, kuyruk ile)
+// API: STREAM
 // ═══════════════════════════════════════════════════════════
 
 app.get("/api/stream", async (req, res) => {
@@ -466,25 +299,16 @@ app.get("/api/stream", async (req, res) => {
     if (!id || !ep) return res.json({ error: "id ve ep gerekli" });
 
     const key = `${id}_${ep}`;
-
-    // CACHE kontrol
     if (m3u8Cache.has(key)) {
-      log("⚡", `Cache hit: ${key}`);
+      log("⚡", `Cache: ${key}`);
       return res.json({ url: m3u8Cache.get(key), cached: true });
     }
 
-    log("🎬", `Stream istek: ${key}`);
+    log("🎬", `Stream: ${key}`);
+    const m3u8 = await scraperQueue.run(() => fetchM3u8(id, ep));
 
-    // KUYRUK üzerinden çalıştır
-    const m3u8 = await scraperQueue.run(() => fetchM3u8WithRetry(id, ep));
+    if (!m3u8) return res.json({ error: "Video bulunamadı. Farklı bölüm/anime deneyin." });
 
-    if (!m3u8) {
-      return res.json({
-        error: "Video bulunamadı. Farklı bölüm veya anime deneyin."
-      });
-    }
-
-    // Cache'e al
     m3u8Cache.set(key, m3u8);
     setTimeout(() => m3u8Cache.delete(key), CONFIG.CACHE_TTL);
 
@@ -492,12 +316,12 @@ app.get("/api/stream", async (req, res) => {
     res.json({ url: m3u8 });
   } catch (e) {
     log("❌", `Stream: ${e.message}`);
-    res.json({ error: e.message || "Bilinmeyen hata" });
+    res.json({ error: e.message || "Hata" });
   }
 });
 
 // ═══════════════════════════════════════════════════════════
-// API: PROXY (m3u8 + segment)
+// API: PROXY
 // ═══════════════════════════════════════════════════════════
 
 app.get("/api/proxy", async (req, res) => {
@@ -520,15 +344,12 @@ app.get("/api/proxy", async (req, res) => {
       const lines = text.split(String.fromCharCode(10));
 
       const rewritten = lines.map((line) => {
-        // URI="..." attribute'ları (key, iframe stream)
         if (line.indexOf('URI="') !== -1) {
           return line.replace(/URI="([^"]+)"/g, (_, uri) => {
             try {
               const abs = new URL(uri, baseUrl).toString();
               return 'URI="/api/proxy?url=' + encodeURIComponent(abs) + '"';
-            } catch (e) {
-              return 'URI="' + uri + '"';
-            }
+            } catch (e) { return 'URI="' + uri + '"'; }
           });
         }
         if (!line || line.startsWith("#")) return line;
@@ -536,9 +357,7 @@ app.get("/api/proxy", async (req, res) => {
         if (!x) return line;
         try {
           return "/api/proxy?url=" + encodeURIComponent(new URL(x, baseUrl).toString());
-        } catch (e) {
-          return line;
-        }
+        } catch (e) { return line; }
       });
 
       res.setHeader("Content-Type", "application/vnd.apple.mpegurl");
@@ -553,55 +372,29 @@ app.get("/api/proxy", async (req, res) => {
 });
 
 // ═══════════════════════════════════════════════════════════
-// API: DEBUG (canlı teşhis)
+// API: DEBUG
 // ═══════════════════════════════════════════════════════════
 
 app.get("/api/debug", async (req, res) => {
   const url = req.query.url || "https://vidnest.fun/anime/21355/1/sub";
-  let browser = null;
-  let ctx = null;
-
-  try {
-    browser = await launchBrowser();
-    ctx = await browser.newContext({
-      ignoreHTTPSErrors: true,
-      userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-    });
-    const page = await ctx.newPage();
-    const requests = [];
-    page.on("request", (r) => { if (requests.length < 50) requests.push(r.url()); });
-
-    let gotoError = null;
-    try {
-      await page.goto(url, { waitUntil: "domcontentloaded", timeout: 25000 });
-    } catch (e) { gotoError = e.message; }
-
-    await page.waitForTimeout(5000);
-
-    const title = await page.title();
-    const bodyText = await page.evaluate(() =>
-      document.body ? document.body.innerText.substring(0, 500) : "NO BODY"
-    );
-
-    res.json({
-      url,
-      gotoError,
-      title,
-      bodyText,
-      requestCount: requests.length,
-      requestsSample: requests.slice(0, 15),
-      proxy: CONFIG.PROXY_ENABLED ? "aktif" : "yok"
-    });
-  } catch (e) {
-    res.json({ error: e.message });
-  } finally {
-    if (ctx) try { await ctx.close(); } catch (x) {}
-    if (browser) try { await browser.close(); } catch (x) {}
-  }
+  const result = await callScrapingAnt(url);
+  const m3u8 = extractM3u8(result.html);
+  res.json({
+    url,
+    status: result.status,
+    elapsed: result.elapsed + "s",
+    htmlLength: result.html ? result.html.length : 0,
+    hasCloudflare: result.html ? result.html.includes("Attention Required") : false,
+    hasConcurrency: result.html ? result.html.includes("concurrency") : false,
+    m3u8Found: !!m3u8,
+    m3u8Sample: m3u8,
+    error: result.error || null,
+    htmlSample: result.html ? result.html.substring(0, 400) : null
+  });
 });
 
 // ═══════════════════════════════════════════════════════════
-// API: HEALTH
+// HEALTH
 // ═══════════════════════════════════════════════════════════
 
 app.get("/health", (req, res) => {
@@ -609,10 +402,10 @@ app.get("/health", (req, res) => {
     status: "ok",
     uptime: Math.round(process.uptime()),
     admin: adminDeviceId,
-    proxy: CONFIG.PROXY_ENABLED,
+    proxy: !!CONFIG.SA_KEY,
     cache: m3u8Cache.size,
     queue: scraperQueue.getStatus(),
-    memory: Math.round(process.memoryUsage().heapUsed / 1024 / 1024) + " MB"
+    mem: Math.round(process.memoryUsage().heapUsed / 1024 / 1024) + " MB"
   });
 });
 
@@ -623,12 +416,8 @@ app.get("/health", (req, res) => {
 function isAdminSocket(socket) {
   return socket.data && socket.data.deviceId === adminDeviceId;
 }
-
 function broadcastAdminStatus() {
-  io.emit("admin-status", {
-    adminDeviceId,
-    totalDevices: io.sockets.sockets.size
-  });
+  io.emit("admin-status", { adminDeviceId, totalDevices: io.sockets.sockets.size });
 }
 
 io.on("connection", (socket) => {
@@ -639,7 +428,6 @@ io.on("connection", (socket) => {
     if (!deviceId) return socket.emit("error-msg", { message: "deviceId gerekli" });
 
     socket.data.deviceId = deviceId;
-
     if (!adminDeviceId) {
       adminDeviceId = deviceId;
       saveAdmin();
@@ -655,13 +443,12 @@ io.on("connection", (socket) => {
       socket.emit("video-state", currentState);
     }
 
-    log(isAdmin ? "👑" : "👤", `Katıldı: ${deviceId}`);
+    log(isAdmin ? "👑" : "👤", `${deviceId}`);
   });
 
   socket.on("video-load", (data) => {
     if (!isAdminSocket(socket)) return;
     if (!data || !data.url) return;
-
     currentVideo = {
       url: data.url,
       title: data.title || "Video",
@@ -670,7 +457,6 @@ io.on("connection", (socket) => {
       startedAt: Date.now()
     };
     currentState = { action: "play", currentTime: 0, at: Date.now() };
-
     socket.broadcast.emit("video-load", currentVideo);
     log("🎬", `Yayınlandı: ${currentVideo.title}`);
   });
@@ -678,12 +464,7 @@ io.on("connection", (socket) => {
   socket.on("video-control", (data) => {
     if (!isAdminSocket(socket)) return;
     if (!data || !data.action) return;
-
-    currentState = {
-      action: data.action,
-      currentTime: data.currentTime || 0,
-      at: Date.now()
-    };
+    currentState = { action: data.action, currentTime: data.currentTime || 0, at: Date.now() };
     socket.broadcast.emit("video-control", currentState);
     log("⏯️", `${data.action} @ ${(data.currentTime || 0).toFixed(1)}s`);
   });
@@ -702,40 +483,17 @@ io.on("connection", (socket) => {
 });
 
 // ═══════════════════════════════════════════════════════════
-// SERVER BAŞLAT
+// START
 // ═══════════════════════════════════════════════════════════
 
 server.listen(CONFIG.PORT, "0.0.0.0", () => {
   console.log("═══════════════════════════════════════════");
-  console.log(`🚀 Sunucu ${CONFIG.PORT} portunda çalışıyor`);
-  console.log(`👑 Admin: ${adminDeviceId || "(ilk girene atanacak)"}`);
-  console.log(`🔒 Proxy: ${CONFIG.PROXY_ENABLED ? "AKTİF (ScrapingAnt)" : "YOK (direct)"}`);
-  console.log(`⚙️ Kuyruk: aktif (concurrency=1)`);
-  console.log(`💾 Cache: ${CONFIG.CACHE_TTL / 60000} dk`);
+  console.log(`🚀 Sunucu ${CONFIG.PORT} portunda`);
+  console.log(`👑 Admin: ${adminDeviceId || "(ilk girene)"}`);
+  console.log(`🔒 ScrapingAnt: ${CONFIG.SA_KEY ? "AKTİF" : "YOK"}`);
   console.log("═══════════════════════════════════════════");
 });
 
-// ═══════════════════════════════════════════════════════════
-// GRACEFUL SHUTDOWN
-// ═══════════════════════════════════════════════════════════
-
-async function shutdown(signal) {
-  log("🛑", `${signal} — kapatılıyor...`);
-  io.close();
-  server.close(() => {
-    log("✅", "Sunucu kapandı");
-    process.exit(0);
-  });
-  setTimeout(() => process.exit(1), 5000);
-}
-
-process.on("SIGTERM", () => shutdown("SIGTERM"));
-process.on("SIGINT", () => shutdown("SIGINT"));
-
-process.on("uncaughtException", (e) => {
-  log("💥", `Uncaught: ${e.message}`);
-});
-
-process.on("unhandledRejection", (e) => {
-  log("💥", `Rejection: ${e && e.message ? e.message : e}`);
-});
+process.on("SIGTERM", () => { io.close(); server.close(() => process.exit(0)); });
+process.on("uncaughtException", (e) => log("💥", e.message));
+process.on("unhandledRejection", (e) => log("💥", e && e.message ? e.message : e));
