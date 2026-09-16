@@ -309,27 +309,88 @@ async function captureM3u8(vidnestUrl, attemptLabel) {
 // M3U8 STRATEJİSİ (URL şemaları + retry)
 // ═══════════════════════════════════════════════════════════
 
+// ═══════════════════════════════════════════════════════════
+// M3U8 ÇEK — ScrapingAnt API (Playwright'sız)
+// ═══════════════════════════════════════════════════════════
+
 async function fetchM3u8WithRetry(animeId, episode) {
-  // Farklı URL şemalarını dene
-  const urlVariants = [
+  const apiKey = CONFIG.PROXY_PASS; // ScrapingAnt API key
+
+  if (!apiKey) {
+    log("❌", "SCRAPINGANT_PASS env yok");
+    return null;
+  }
+
+  // URL şemaları
+  const variants = [
     { url: `https://vidnest.fun/anime/${animeId}/${episode}/sub`, label: "sub" },
     { url: `https://vidnest.fun/anime/${animeId}/${episode}/dub`, label: "dub" }
   ];
 
-  for (const variant of urlVariants) {
-    for (let retry = 1; retry <= CONFIG.MAX_RETRIES_PER_URL; retry++) {
-      const attemptLabel = `${variant.label}#${retry}`;
-      const result = await captureM3u8(variant.url, attemptLabel);
+  for (const variant of variants) {
+    try {
+      const t0 = Date.now();
+      log("🌐", `${variant.label} — ScrapingAnt API çağrılıyor`);
 
-      if (result) return result;
+      // ScrapingAnt v2 General endpoint
+      const params = new URLSearchParams({
+        url: variant.url,
+        "x-api-key": apiKey,
+        browser: "true",              // JS render
+        wait_until: "networkidle",    // Ağ boşalana kadar bekle (m3u8 yakalanır)
+        proxy_country: "us",
+        block_resource: "image,media,font,stylesheet" // Hız için görselleri engelle
+      });
 
-      // Son deneme değilse bekle
-      if (retry < CONFIG.MAX_RETRIES_PER_URL) {
-        await new Promise((r) => setTimeout(r, CONFIG.RETRY_DELAY));
+      const apiUrl = `https://api.scrapingant.com/v2/general?${params.toString()}`;
+      log("🔗", `API: ${apiUrl.slice(0, 100)}...`);
+
+      const r = await fetch(apiUrl, { signal: AbortSignal.timeout(60000) });
+      const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
+
+      if (!r.ok) {
+        const errText = await r.text().catch(() => "");
+        log("❌", `${variant.label} — HTTP ${r.status} — ${errText.slice(0, 150)}`);
+        continue;
       }
+
+      const html = await r.text();
+      log("📥", `${variant.label} — ${elapsed}s — HTML ${html.length} byte`);
+
+      // m3u8 regex ile ara
+      const m3u8Regex = /https?:\/\/[^"'\s\\<>]+\.m3u8[^"'\s\\<>]*/g;
+      const matches = html.match(m3u8Regex) || [];
+
+      // Master playlist'leri tercih et, segment'leri atla
+      const filtered = matches.filter((u) =>
+        !u.includes("index-f1") &&
+        !u.includes("iframes") &&
+        !u.includes("segment")
+      );
+
+      if (filtered.length === 0) {
+        log("⚠️", `${variant.label} — m3u8 yok (HTML ${html.length} byte)`);
+        // HTML'in başını logla (debug)
+        if (html.includes("Attention Required")) {
+          log("🚫", `${variant.label} — Cloudflare block`);
+        } else if (html.includes("concurrency limit")) {
+          log("🚫", `${variant.label} — Concurrency limit`);
+        }
+        continue;
+      }
+
+      // En uzun URL genelde master playlist
+      const best = filtered.reduce((a, b) => a.length > b.length ? a : b);
+      log("✅", `${variant.label} — ${elapsed}s — BULUNDU (${filtered.length} aday)`);
+      return best;
+
+    } catch (e) {
+      log("❌", `${variant.label} — ${e.message.slice(0, 100)}`);
+      // Devam et, sonraki varyantı dene
     }
   }
 
+  log("❌", "Tüm varyantlar başarısız");
   return null;
 }
 
