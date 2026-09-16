@@ -1,126 +1,380 @@
-import express from 'express';
-import cors from 'cors';
-import path from 'path';
-import { fileURLToPath } from 'url';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+const express = require("express");
+const http = require("http");
+const { Server } = require("socket.io");
+const cors = require("cors");
+const { spawn } = require("child_process");
+const fs = require("fs");
+const path = require("path");
+const { chromium } = require("playwright");
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const server = http.createServer(app);
+const io = new Server(server, {
+  cors: { origin: "*" },
+  maxHttpBufferSize: 50 * 1024 * 1024,
+  pingTimeout: 60000
+});
 
 app.use(cors());
-app.use(express.json());
-app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.static(__dirname));
 
-// ============ ANİME ARA (AniList GraphQL) ============
-app.get('/api/anime/search', async (req, res) => {
-    try {
-        const { q, limit = 12 } = req.query;
-        if (!q || q.trim().length < 2) {
-            return res.json({ results: [] });
-        }
+// ==========================================
+// ADMIN KALICILIĞI (dosyaya yaz)
+// ==========================================
+const ADMIN_FILE = path.join(__dirname, "admin.json");
+let adminDeviceId = null;
 
-        const response = await fetch('https://graphql.anilist.co', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                query: `query ($search: String, $perPage: Int) {
-                    Page(perPage: $perPage) {
-                        media(search: $search, type: ANIME, sort: POPULARITY_DESC) {
-                            id
-                            title { romaji english }
-                            episodes
-                            format
-                            seasonYear
-                            coverImage { large }
-                        }
-                    }
-                }`,
-                variables: { search: q.trim(), perPage: parseInt(limit) }
-            })
-        });
-
-        const data = await response.json();
-        const media = data?.data?.Page?.media || [];
-
-        res.json({
-            results: media.map(m => ({
-                id: m.id,
-                title: m.title.english || m.title.romaji,
-                titleRomaji: m.title.romaji,
-                episodes: m.episodes || 0,
-                format: m.format || 'TV',
-                year: m.seasonYear || '',
-                poster: m.coverImage?.large || ''
-            }))
-        });
-    } catch (e) {
-        console.error('Arama hatası:', e);
-        res.json({ results: [], error: e.message });
+function loadAdmin() {
+  try {
+    if (fs.existsSync(ADMIN_FILE)) {
+      const data = JSON.parse(fs.readFileSync(ADMIN_FILE, "utf8"));
+      adminDeviceId = data.deviceId || null;
+      console.log("👑 Admin yüklendi:", adminDeviceId);
     }
+  } catch (e) {
+    console.error("Admin yükleme hatası:", e.message);
+  }
+}
+
+function saveAdmin() {
+  try {
+    fs.writeFileSync(ADMIN_FILE, JSON.stringify({
+      deviceId: adminDeviceId,
+      createdAt: Date.now()
+    }));
+  } catch (e) {
+    console.error("Admin kaydetme hatası:", e.message);
+  }
+}
+
+loadAdmin();
+
+// ==========================================
+// VİDEO DURUMU (oda hafızası)
+// ==========================================
+let currentVideo = null;
+let currentState = { action: "pause", currentTime: 0, at: Date.now() };
+const m3u8Cache = new Map();
+
+// ==========================================
+// PLAYWRIGHT SCRAPER (browser tekil)
+// ==========================================
+let browserInstance = null;
+
+async function getBrowser() {
+  if (browserInstance && browserInstance.isConnected()) return browserInstance;
+  console.log("🌐 Chromium başlatılıyor...");
+  browserInstance = await chromium.launch({
+    headless: true,
+    args: [
+      "--no-sandbox",
+      "--disable-setuid-sandbox",
+      "--disable-dev-shm-usage",
+      "--disable-gpu",
+      "--single-process"
+    ]
+  });
+  return browserInstance;
+}
+
+async function getM3u8(vidnestUrl) {
+  let context;
+  try {
+    const browser = await getBrowser();
+    context = await browser.newContext({
+      userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    });
+    const page = await context.newPage();
+    const found = new Set();
+
+    page.on("request", (req) => {
+      const u = req.url();
+      if (u.includes(".m3u8") && !u.includes("index-f1") && !u.includes("iframes")) {
+        found.add(u);
+      }
+    });
+
+    try {
+      await page.goto(vidnestUrl, { waitUntil: "domcontentloaded", timeout: 45000 });
+    } catch (e) {}
+
+    await page.waitForTimeout(12000);
+    await page.close();
+    await context.close();
+
+    const urls = Array.from(found);
+    if (urls.length === 0) return null;
+    return urls.reduce((a, b) => a.length > b.length ? a : b);
+  } catch (e) {
+    console.error("getM3u8 hata:", e.message);
+    if (context) { try { await context.close(); } catch (x) {} }
+    if (browserInstance) { try { await browserInstance.close(); } catch (x) {} browserInstance = null; }
+    return null;
+  }
+}
+
+// ==========================================
+// CURL YARDIMCI (Cloudflare bypass)
+// ==========================================
+function curlFetch(url) {
+  return new Promise((resolve) => {
+    const proc = spawn("curl", [
+      "-s", "-L", "--max-time", "30",
+      "-A", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+      "-H", "Referer: https://megaplay.buzz/",
+      "-H", "Origin: https://megaplay.buzz",
+      url
+    ]);
+    const chunks = [];
+    proc.stdout.on("data", (c) => chunks.push(c));
+    proc.on("close", (code) => {
+      if (code !== 0) return resolve(null);
+      resolve(Buffer.concat(chunks));
+    });
+    proc.on("error", () => resolve(null));
+  });
+}
+
+// ==========================================
+// API: ANİME ARA (AniList)
+// ==========================================
+app.get("/api/search", async (req, res) => {
+  try {
+    const q = (req.query.q || "").trim();
+    if (q.length < 2) return res.json({ results: [] });
+
+    const body = {
+      query: "query($s:String){Page(perPage:15){media(search:$s,type:ANIME,sort:POPULARITY_DESC){id title{english romaji} episodes format seasonYear coverImage{large}}}}",
+      variables: { s: q }
+    };
+
+    const r = await fetch("https://graphql.anilist.co", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body)
+    });
+    const d = await r.json();
+    const m = (d.data && d.data.Page && d.data.Page.media) || [];
+
+    res.json({
+      results: m.map((x) => ({
+        id: x.id,
+        title: x.title.english || x.title.romaji,
+        titleRomaji: x.title.romaji,
+        episodes: x.episodes || 0,
+        format: x.format || "TV",
+        year: x.seasonYear || "",
+        poster: x.coverImage ? x.coverImage.large : ""
+      }))
+    });
+  } catch (e) {
+    res.json({ results: [], error: e.message });
+  }
 });
 
-// ============ ANİME VİDEO LİNKİ (aniplay) ============
-app.get('/api/anime/stream', async (req, res) => {
-    try {
-        const { id, ep, server = 'hd1', mode = 'sub' } = req.query;
-        if (!id || !ep) {
-            return res.json({ error: 'id ve ep gerekli' });
-        }
+// ==========================================
+// API: STREAM (m3u8 linki)
+// ==========================================
+app.get("/api/stream", async (req, res) => {
+  try {
+    const { id, ep } = req.query;
+    if (!id || !ep) return res.json({ error: "id ve ep gerekli" });
 
-        // aniplay ESM modülü — dinamik import
-        const aniplayModule = await import('aniplay');
-        const hd = aniplayModule.default;
+    const key = id + "_" + ep;
+    if (m3u8Cache.has(key)) {
+      console.log("⚡ Cache hit:", key);
+      return res.json({ url: m3u8Cache.get(key), cached: true });
+    }
 
-        const serverMap = {
-            hd1: 'fetchHD1Stream',
-            hd2: 'fetchHD2Stream',
-            hd3: 'fetchHD3Stream',
-            hd4: 'fetchHD4Stream',
-            hd5: 'fetchHD5Stream',
-            hd6: 'fetchHD6Stream'
-        };
+    const vidnestUrl = `https://vidnest.fun/anime/${id}/${ep}/sub`;
+    console.log("🎬 Scraper çalışıyor:", vidnestUrl);
 
-        const fnName = serverMap[server] || 'fetchHD1Stream';
+    const m3u8 = await getM3u8(vidnestUrl);
+    if (!m3u8) return res.json({ error: "Video bulunamadı. Farklı bölüm deneyin." });
 
-        let url = null;
-        let usedServer = fnName;
+    m3u8Cache.set(key, m3u8);
+    setTimeout(() => m3u8Cache.delete(key), 30 * 60 * 1000);
 
-        // İstenen server'ı dene
-        try {
-            url = await hd[fnName](id.toString(), ep.toString(), mode);
-        } catch (e) {
-            console.error(`${fnName} hatası:`, e.message);
-        }
+    console.log("✅ m3u8 alındı");
+    res.json({ url: m3u8 });
+  } catch (e) {
+    res.json({ error: e.message });
+  }
+});
 
-        // Başarısızsa sırayla diğerlerini dene
-        if (!url) {
-            for (const [key, fn] of Object.entries(serverMap)) {
-                if (fn === fnName) continue;
-                try {
-                    url = await hd[fn](id.toString(), ep.toString(), mode);
-                    if (url) {
-                        usedServer = fn;
-                        console.log(`Yedek server kullanıldı: ${fn}`);
-                        break;
-                    }
-                } catch (e) {}
+// ==========================================
+// API: PROXY (CORS bypass + URL rewrite)
+// ==========================================
+app.get("/api/proxy", async (req, res) => {
+  try {
+    const url = req.query.url;
+    if (!url) return res.status(400).send("url gerekli");
+
+    const buf = await curlFetch(url);
+    if (!buf || buf.length === 0) return res.status(500).send("bos");
+
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Headers", "*");
+
+    const head = buf.slice(0, 20).toString();
+    const isM3u8 = url.includes(".m3u8") || head.startsWith("#EXTM3U");
+
+    if (isM3u8) {
+      const text = buf.toString("utf8");
+      const baseUrl = new URL(url);
+      const lines = text.split(String.fromCharCode(10));
+
+      const rewritten = lines.map((line) => {
+        // URI="..." attribute'ları (key, iframe stream vs.)
+        if (line.indexOf('URI="') !== -1) {
+          return line.replace(/URI="([^"]+)"/g, (_, uri) => {
+            try {
+              const abs = new URL(uri, baseUrl).toString();
+              return 'URI="/api/proxy?url=' + encodeURIComponent(abs) + '"';
+            } catch (e) {
+              return 'URI="' + uri + '"';
             }
+          });
         }
-
-        if (!url) {
-            return res.json({ error: 'Hiçbir kaynakta video bulunamadı' });
+        if (!line || line.startsWith("#")) return line;
+        const x = line.trim();
+        if (!x) return line;
+        try {
+          return "/api/proxy?url=" + encodeURIComponent(new URL(x, baseUrl).toString());
+        } catch (e) {
+          return line;
         }
+      });
 
-        res.json({ url, server: usedServer, mode, episode: ep });
-    } catch (e) {
-        console.error('Stream hatası:', e);
-        res.json({ error: e.message });
+      res.setHeader("Content-Type", "application/vnd.apple.mpegurl");
+      return res.send(rewritten.join(String.fromCharCode(10)));
     }
+
+    res.setHeader("Content-Type", "video/mp2t");
+    res.send(buf);
+  } catch (e) {
+    console.error("Proxy hata:", e.message);
+    res.status(500).send("hata");
+  }
 });
 
-app.listen(PORT, () => {
-    console.log(`🚀 Anime test sunucusu ${PORT} portunda çalışıyor`);
-    console.log(`🌐 Tarayıcıda aç: http://localhost:${PORT}`);
+// ==========================================
+// SOCKET.IO — ADMIN SENKRONİZASYON
+// ==========================================
+function isAdminSocket(socket) {
+  return socket.data && socket.data.deviceId && socket.data.deviceId === adminDeviceId;
+}
+
+function broadcastAdminStatus() {
+  io.emit("admin-status", {
+    adminDeviceId: adminDeviceId,
+    totalDevices: io.sockets.sockets.size
+  });
+}
+
+io.on("connection", (socket) => {
+  console.log("🔌 Bağlandı:", socket.id);
+
+  socket.on("join", (data) => {
+    const deviceId = data && data.deviceId ? String(data.deviceId) : null;
+    if (!deviceId) {
+      socket.emit("error-msg", { message: "deviceId gerekli" });
+      return;
+    }
+
+    socket.data.deviceId = deviceId;
+
+    // ⚡ İlk giren admin olur, değişmez
+    if (!adminDeviceId) {
+      adminDeviceId = deviceId;
+      saveAdmin();
+      console.log("👑 Yeni admin atandı:", deviceId);
+    }
+
+    const isAdmin = deviceId === adminDeviceId;
+
+    socket.emit("you-are", { isAdmin, deviceId, adminDeviceId });
+    broadcastAdminStatus();
+
+    // Mevcut video varsa gönder
+    if (currentVideo) {
+      socket.emit("video-load", currentVideo);
+      socket.emit("video-state", currentState);
+    }
+
+    console.log(`${isAdmin ? "👑" : "👤"} Katıldı: ${deviceId}`);
+  });
+
+  // ===== ADMIN: Video yükle =====
+  socket.on("video-load", (data) => {
+    if (!isAdminSocket(socket)) {
+      socket.emit("error-msg", { message: "Sadece admin video yükleyebilir" });
+      return;
+    }
+    if (!data || !data.url) return;
+
+    currentVideo = {
+      url: data.url,
+      title: data.title || "Video",
+      animeId: data.animeId || null,
+      episode: data.episode || 1,
+      startedAt: Date.now()
+    };
+    currentState = { action: "play", currentTime: 0, at: Date.now() };
+
+    socket.broadcast.emit("video-load", currentVideo);
+    console.log("🎬 Video yüklendi:", currentVideo.title);
+  });
+
+  // ===== ADMIN: Play/Pause/Seek =====
+  socket.on("video-control", (data) => {
+    if (!isAdminSocket(socket)) return;
+    if (!data || !data.action) return;
+
+    currentState = {
+      action: data.action,
+      currentTime: data.currentTime || 0,
+      at: Date.now()
+    };
+
+    socket.broadcast.emit("video-control", {
+      action: data.action,
+      currentTime: data.currentTime || 0,
+      at: Date.now()
+    });
+
+    const t = (data.currentTime || 0).toFixed(1);
+    console.log(`⏯️ ${data.action} @ ${t}s`);
+  });
+
+  // ===== İzleyici: Senkron isteği =====
+  socket.on("request-sync", () => {
+    if (currentVideo) {
+      socket.emit("video-load", currentVideo);
+      socket.emit("video-state", currentState);
+    }
+  });
+
+  socket.on("disconnect", () => {
+    console.log("❌ Ayrıldı:", socket.data.deviceId || socket.id);
+    broadcastAdminStatus();
+  });
+});
+
+// ==========================================
+// SUNUCU BAŞLAT
+// ==========================================
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, "0.0.0.0", () => {
+  console.log(`🚀 Sunucu ${PORT} portunda çalışıyor`);
+  console.log(`👑 Admin: ${adminDeviceId || "(ilk girene atanacak)"}`);
+});
+
+// Graceful shutdown
+process.on("SIGTERM", async () => {
+  console.log("Kapatılıyor...");
+  if (browserInstance) {
+    try { await browserInstance.close(); } catch (e) {}
+  }
+  server.close(() => process.exit(0));
 });
