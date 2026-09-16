@@ -12,16 +12,15 @@ const server = http.createServer(app);
 const io = new Server(server, {
   cors: { origin: "*" },
   maxHttpBufferSize: 50 * 1024 * 1024,
-  pingTimeout: 60000
+  pingTimeout: 60000,
+  pingInterval: 25000
 });
 
 app.use(cors());
 app.use(express.static(__dirname));
 
-// ==========================================
-// ADMIN KALICILIĞI (dosyaya yaz)
-// ==========================================
-const ADMIN_FILE = "/data/admin.json";  // Render disk varsa
+// ===== ADMIN KALICILIĞI =====
+const ADMIN_FILE = "/data/admin.json";
 let adminDeviceId = null;
 
 function loadAdmin() {
@@ -31,120 +30,113 @@ function loadAdmin() {
       adminDeviceId = data.deviceId || null;
       console.log("👑 Admin yüklendi:", adminDeviceId);
     }
-  } catch (e) {
-    console.error("Admin yükleme hatası:", e.message);
-  }
+  } catch (e) {}
 }
-
 function saveAdmin() {
   try {
-    fs.writeFileSync(ADMIN_FILE, JSON.stringify({
-      deviceId: adminDeviceId,
-      createdAt: Date.now()
-    }));
-  } catch (e) {
-    // /data yoksa sessizce geç (disk eklenmemiş)
-    if (!e.message.includes("ENOENT")) {
-      console.error("Admin kaydetme hatası:", e.message);
-    }
-  }
+    fs.mkdirSync(path.dirname(ADMIN_FILE), { recursive: true });
+    fs.writeFileSync(ADMIN_FILE, JSON.stringify({ deviceId: adminDeviceId, createdAt: Date.now() }));
+  } catch (e) {}
 }
-
 loadAdmin();
 
-// ==========================================
-// VİDEO DURUMU (oda hafızası)
-// ==========================================
+// ===== DURUM =====
 let currentVideo = null;
 let currentState = { action: "pause", currentTime: 0, at: Date.now() };
 const m3u8Cache = new Map();
 
-// ==========================================
-// PLAYWRIGHT SCRAPER (browser tekil)
-// ==========================================
+// ===== PAYLAŞIMLI BROWSER =====
+let sharedBrowser = null;
+
+async function getSharedBrowser() {
+  if (sharedBrowser && sharedBrowser.isConnected()) return sharedBrowser;
+  if (sharedBrowser) {
+    try { await sharedBrowser.close(); } catch (e) {}
+    sharedBrowser = null;
+  }
+  console.log("🌐 Chromium başlatılıyor...");
+  sharedBrowser = await chromium.launch({
+    headless: true,
+    proxy: process.env.SCRAPINGANT_PASS ? {
+      server: "http://proxy.scrapingant.com:8080",
+      username: process.env.SCRAPINGANT_USER || "scrapingant",
+      password: process.env.SCRAPINGANT_PASS
+    } : undefined,
+    args: [
+      "--no-sandbox",
+      "--disable-setuid-sandbox",
+      "--disable-dev-shm-usage",
+      "--disable-gpu",
+      "--no-zygote",
+      "--disable-blink-features=AutomationControlled",
+      "--ignore-certificate-errors",
+      "--ignore-ssl-errors",
+      "--disable-web-security",
+      "--disable-features=IsolateOrigins,site-per-process"
+    ]
+  });
+  sharedBrowser.on("disconnected", () => {
+    console.log("⚠️ Chromium düştü");
+    sharedBrowser = null;
+  });
+  console.log("✅ Chromium hazır");
+  return sharedBrowser;
+}
+
 async function getM3u8(vidnestUrl) {
-  let browser = null;
+  const startTime = Date.now();
   let context = null;
   try {
-    const proxyUser = process.env.SCRAPINGANT_USER || "scrapingant";
-    const proxyPass = process.env.SCRAPINGANT_PASS;
-    
-    if (!proxyPass) {
-      console.error("❌ SCRAPINGANT_PASS env variable yok!");
-      return null;
-    }
-
-    console.log("🌐 Chromium + ScrapingAnt proxy...");
-    browser = await chromium.launch({
-      headless: true,
-      proxy: {
-        server: "http://proxy.scrapingant.com:8080",
-        username: proxyUser,
-        password: proxyPass
-      },
-      args: [
-        "--no-sandbox",
-        "--disable-setuid-sandbox",
-        "--disable-dev-shm-usage",
-        "--disable-gpu",
-        "--no-zygote",
-        "--disable-blink-features=AutomationControlled"
-      ]
-    });
-    console.log("✅ Browser + proxy hazır");
-
+    const browser = await getSharedBrowser();
     context = await browser.newContext({
       userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
       viewport: { width: 1280, height: 720 },
-      locale: "en-US"
+      locale: "en-US",
+      ignoreHTTPSErrors: true,
+      bypassCSP: true
     });
 
     const page = await context.newPage();
-    const found = new Set();
+
+    let captured = null;
+    let resolveCapture;
+    const capturePromise = new Promise((resolve) => { resolveCapture = resolve; });
 
     page.on("request", (req) => {
       const u = req.url();
       if (u.includes(".m3u8") && !u.includes("index-f1") && !u.includes("iframes")) {
-        found.add(u);
+        if (!captured || u.length > captured.length) {
+          captured = u;
+          if (resolveCapture) resolveCapture(u);
+        }
       }
     });
 
-    try {
-      await page.goto(vidnestUrl, { waitUntil: "domcontentloaded", timeout: 45000 });
-    } catch (e) {
-      console.log("⚠️ Sayfa uyarısı:", e.message);
-    }
+    page.goto(vidnestUrl, { waitUntil: "domcontentloaded", timeout: 30000 }).catch((e) => {
+      console.log("⚠️ goto uyarı:", e.message.slice(0, 80));
+    });
 
-    console.log("⏳ 15 saniye bekleniyor...");
-    await page.waitForTimeout(15000);
+    const timeoutPromise = new Promise((resolve) => setTimeout(() => resolve(null), 25000));
+    const result = await Promise.race([capturePromise, timeoutPromise]);
 
-    const title = await page.title();
-    console.log("📄 Sayfa başlığı:", title);
-    console.log("📊 Bulunan m3u8 sayısı:", found.size);
+    const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+    console.log(`⏱️ ${elapsed}s | m3u8: ${result ? "BULUNDU ✅" : "YOK ❌"}`);
 
-    await page.close();
-    await context.close();
-    await browser.close();
-    browser = null;
-
-    const urls = Array.from(found);
-    if (urls.length === 0) return null;
-    return urls.reduce((a, b) => a.length > b.length ? a : b);
+    await page.close().catch(() => {});
+    await context.close().catch(() => {});
+    return result;
   } catch (e) {
-    console.error("❌ getM3u8 hata:", e.message);
+    console.error("❌ getM3u8:", e.message.slice(0, 120));
     if (context) { try { await context.close(); } catch (x) {} }
-    if (browser) { try { await browser.close(); } catch (x) {} }
     return null;
   }
 }
 
-// ==========================================
-// CURL YARDIMCI (Cloudflare bypass)
-// ==========================================
+// ===== CURL YARDIMCI =====
 function curlFetch(url) {
   return new Promise((resolve) => {
     const proc = spawn("curl", [
-      "-s", "-L", "--max-time", "30",
+      "-s", "-L", "--max-time", "30", "--compressed",
       "-A", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
       "-H", "Referer: https://megaplay.buzz/",
       "-H", "Origin: https://megaplay.buzz",
@@ -160,9 +152,7 @@ function curlFetch(url) {
   });
 }
 
-// ==========================================
-// API: ANİME ARA (AniList)
-// ==========================================
+// ===== API: SEARCH =====
 app.get("/api/search", async (req, res) => {
   try {
     const q = (req.query.q || "").trim();
@@ -197,59 +187,7 @@ app.get("/api/search", async (req, res) => {
   }
 });
 
-// ==========================================
-// ============ DEBUG ============
-app.get("/api/debug", async (req, res) => {
-  const url = req.query.url || "https://vidnest.fun/anime/21355/1/sub";
-  let browser = null;
-  try {
-    browser = await chromium.launch({
-      headless: true,
-      args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage", "--disable-gpu"]
-    });
-    const ctx = await browser.newContext({
-      userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-    });
-    const page = await ctx.newPage();
-    const requests = [];
-    page.on("request", (r) => { if (requests.length < 50) requests.push(r.url()); });
-
-    let gotoError = null;
-    try {
-      await page.goto(url, { waitUntil: "domcontentloaded", timeout: 40000 });
-    } catch (e) { gotoError = e.message; }
-
-    await page.waitForTimeout(8000);
-
-    const title = await page.title();
-    const html = await page.content();
-    const hasCF = html.includes("Just a moment") || html.includes("cf-browser-verification") || html.includes("cf-challenge");
-    const bodyText = await page.evaluate(() => document.body ? document.body.innerText.substring(0, 800) : "NO BODY");
-    const iframes = await page.$$eval("iframe", els => els.map(e => e.src).slice(0, 10));
-    const videos = await page.$$eval("video", els => els.map(e => e.src).slice(0, 5));
-
-    await browser.close();
-
-    res.json({
-      url,
-      gotoError,
-      title,
-      htmlLength: html.length,
-      hasCloudflare: hasCF,
-      bodyText,
-      iframes,
-      videos,
-      requestCount: requests.length,
-      requestsSample: requests.slice(0, 20),
-      htmlSample: html.substring(0, 800)
-    });
-  } catch (e) {
-    if (browser) try { await browser.close(); } catch (x) {}
-    res.json({ error: e.message, stack: e.stack });
-  }
-});
-// API: STREAM (m3u8 linki)
-// ==========================================
+// ===== API: STREAM =====
 app.get("/api/stream", async (req, res) => {
   try {
     const { id, ep } = req.query;
@@ -257,12 +195,12 @@ app.get("/api/stream", async (req, res) => {
 
     const key = id + "_" + ep;
     if (m3u8Cache.has(key)) {
-      console.log("⚡ Cache hit:", key);
+      console.log("⚡ Cache:", key);
       return res.json({ url: m3u8Cache.get(key), cached: true });
     }
 
     const vidnestUrl = `https://vidnest.fun/anime/${id}/${ep}/sub`;
-    console.log("🎬 Scraper çalışıyor:", vidnestUrl);
+    console.log("🎬 Scraper:", vidnestUrl);
 
     const m3u8 = await getM3u8(vidnestUrl);
     if (!m3u8) return res.json({ error: "Video bulunamadı. Farklı bölüm deneyin." });
@@ -270,16 +208,13 @@ app.get("/api/stream", async (req, res) => {
     m3u8Cache.set(key, m3u8);
     setTimeout(() => m3u8Cache.delete(key), 30 * 60 * 1000);
 
-    console.log("✅ m3u8 alındı");
     res.json({ url: m3u8 });
   } catch (e) {
     res.json({ error: e.message });
   }
 });
 
-// ==========================================
-// API: PROXY (CORS bypass + URL rewrite)
-// ==========================================
+// ===== API: PROXY =====
 app.get("/api/proxy", async (req, res) => {
   try {
     const url = req.query.url;
@@ -298,17 +233,13 @@ app.get("/api/proxy", async (req, res) => {
       const text = buf.toString("utf8");
       const baseUrl = new URL(url);
       const lines = text.split(String.fromCharCode(10));
-
       const rewritten = lines.map((line) => {
-        // URI="..." attribute'ları (key, iframe stream vs.)
         if (line.indexOf('URI="') !== -1) {
           return line.replace(/URI="([^"]+)"/g, (_, uri) => {
             try {
               const abs = new URL(uri, baseUrl).toString();
               return 'URI="/api/proxy?url=' + encodeURIComponent(abs) + '"';
-            } catch (e) {
-              return 'URI="' + uri + '"';
-            }
+            } catch (e) { return 'URI="' + uri + '"'; }
           });
         }
         if (!line || line.startsWith("#")) return line;
@@ -316,11 +247,8 @@ app.get("/api/proxy", async (req, res) => {
         if (!x) return line;
         try {
           return "/api/proxy?url=" + encodeURIComponent(new URL(x, baseUrl).toString());
-        } catch (e) {
-          return line;
-        }
+        } catch (e) { return line; }
       });
-
       res.setHeader("Content-Type", "application/vnd.apple.mpegurl");
       return res.send(rewritten.join(String.fromCharCode(10)));
     }
@@ -328,23 +256,50 @@ app.get("/api/proxy", async (req, res) => {
     res.setHeader("Content-Type", "video/mp2t");
     res.send(buf);
   } catch (e) {
-    console.error("Proxy hata:", e.message);
     res.status(500).send("hata");
   }
 });
 
-// ==========================================
-// SOCKET.IO — ADMIN SENKRONİZASYON
-// ==========================================
-function isAdminSocket(socket) {
-  return socket.data && socket.data.deviceId && socket.data.deviceId === adminDeviceId;
-}
+// ===== API: DEBUG =====
+app.get("/api/debug", async (req, res) => {
+  const url = req.query.url || "https://vidnest.fun/anime/21355/1/sub";
+  let ctx = null;
+  try {
+    const browser = await getSharedBrowser();
+    ctx = await browser.newContext({
+      ignoreHTTPSErrors: true,
+      userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+    });
+    const page = await ctx.newPage();
+    const requests = [];
+    page.on("request", (r) => { if (requests.length < 50) requests.push(r.url()); });
 
+    let gotoError = null;
+    try {
+      await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30000 });
+    } catch (e) { gotoError = e.message; }
+
+    await page.waitForTimeout(6000);
+
+    const title = await page.title();
+    const bodyText = await page.evaluate(() => document.body ? document.body.innerText.substring(0, 500) : "NO BODY");
+
+    await page.close().catch(() => {});
+    await ctx.close().catch(() => {});
+
+    res.json({ url, gotoError, title, bodyText, requestCount: requests.length, requestsSample: requests.slice(0, 20) });
+  } catch (e) {
+    if (ctx) try { await ctx.close(); } catch (x) {}
+    res.json({ error: e.message });
+  }
+});
+
+// ===== SOCKET.IO =====
+function isAdminSocket(socket) {
+  return socket.data && socket.data.deviceId === adminDeviceId;
+}
 function broadcastAdminStatus() {
-  io.emit("admin-status", {
-    adminDeviceId: adminDeviceId,
-    totalDevices: io.sockets.sockets.size
-  });
+  io.emit("admin-status", { adminDeviceId, totalDevices: io.sockets.sockets.size });
 }
 
 io.on("connection", (socket) => {
@@ -352,42 +307,29 @@ io.on("connection", (socket) => {
 
   socket.on("join", (data) => {
     const deviceId = data && data.deviceId ? String(data.deviceId) : null;
-    if (!deviceId) {
-      socket.emit("error-msg", { message: "deviceId gerekli" });
-      return;
-    }
+    if (!deviceId) return socket.emit("error-msg", { message: "deviceId gerekli" });
 
     socket.data.deviceId = deviceId;
-
-    // ⚡ İlk giren admin olur, değişmez
     if (!adminDeviceId) {
       adminDeviceId = deviceId;
       saveAdmin();
-      console.log("👑 Yeni admin atandı:", deviceId);
+      console.log("👑 Yeni admin:", deviceId);
     }
 
     const isAdmin = deviceId === adminDeviceId;
-
     socket.emit("you-are", { isAdmin, deviceId, adminDeviceId });
     broadcastAdminStatus();
 
-    // Mevcut video varsa gönder
     if (currentVideo) {
       socket.emit("video-load", currentVideo);
       socket.emit("video-state", currentState);
     }
-
-    console.log(`${isAdmin ? "👑" : "👤"} Katıldı: ${deviceId}`);
+    console.log(`${isAdmin ? "👑" : "👤"} ${deviceId}`);
   });
 
-  // ===== ADMIN: Video yükle =====
   socket.on("video-load", (data) => {
-    if (!isAdminSocket(socket)) {
-      socket.emit("error-msg", { message: "Sadece admin video yükleyebilir" });
-      return;
-    }
+    if (!isAdminSocket(socket)) return;
     if (!data || !data.url) return;
-
     currentVideo = {
       url: data.url,
       title: data.title || "Video",
@@ -396,33 +338,18 @@ io.on("connection", (socket) => {
       startedAt: Date.now()
     };
     currentState = { action: "play", currentTime: 0, at: Date.now() };
-
     socket.broadcast.emit("video-load", currentVideo);
-    console.log("🎬 Video yüklendi:", currentVideo.title);
+    console.log("🎬 Yayınlandı:", currentVideo.title);
   });
 
-  // ===== ADMIN: Play/Pause/Seek =====
   socket.on("video-control", (data) => {
     if (!isAdminSocket(socket)) return;
     if (!data || !data.action) return;
-
-    currentState = {
-      action: data.action,
-      currentTime: data.currentTime || 0,
-      at: Date.now()
-    };
-
-    socket.broadcast.emit("video-control", {
-      action: data.action,
-      currentTime: data.currentTime || 0,
-      at: Date.now()
-    });
-
-    const t = (data.currentTime || 0).toFixed(1);
-    console.log(`⏯️ ${data.action} @ ${t}s`);
+    currentState = { action: data.action, currentTime: data.currentTime || 0, at: Date.now() };
+    socket.broadcast.emit("video-control", currentState);
+    console.log(`⏯️ ${data.action} @ ${(data.currentTime || 0).toFixed(1)}s`);
   });
 
-  // ===== İzleyici: Senkron isteği =====
   socket.on("request-sync", () => {
     if (currentVideo) {
       socket.emit("video-load", currentVideo);
@@ -436,20 +363,17 @@ io.on("connection", (socket) => {
   });
 });
 
-// ==========================================
-// SUNUCU BAŞLAT
-// ==========================================
+// ===== HEALTH =====
+app.get("/health", (req, res) => res.json({ status: "ok", admin: adminDeviceId, cacheSize: m3u8Cache.size }));
+
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, "0.0.0.0", () => {
-  console.log(`🚀 Sunucu ${PORT} portunda çalışıyor`);
-  console.log(`👑 Admin: ${adminDeviceId || "(ilk girene atanacak)"}`);
+  console.log(`🚀 Sunucu ${PORT} portunda`);
+  console.log(`👑 Admin: ${adminDeviceId || "(ilk girene)"}`);
+  console.log(`🔒 Proxy: ${process.env.SCRAPINGANT_PASS ? "AKTİF" : "YOK"}`);
 });
 
-// Graceful shutdown
 process.on("SIGTERM", async () => {
-  console.log("Kapatılıyor...");
-  if (browserInstance) {
-    try { await browserInstance.close(); } catch (e) {}
-  }
+  if (sharedBrowser) try { await sharedBrowser.close(); } catch (e) {}
   server.close(() => process.exit(0));
 });
