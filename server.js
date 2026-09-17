@@ -648,7 +648,16 @@ app.get("/api/debug", async (req, res) => {
     searchSource: result.html ? (result.html.match(/source/gi) || []).length : 0,
     searchStream: result.html ? (result.html.match(/stream/gi) || []).length : 0,
     searchVideo: result.html ? (result.html.match(/video/gi) || []).length : 0,
-    searchIframe: result.html ? (result.html.match(/iframe/gi) || []).length : 0
+        searchIframe: result.html ? (result.html.match(/iframe/gi) || []).length : 0,
+    subtitleInHtml: result.html ? [
+      ...result.html.matchAll(/https?:\/\/[^"'\s\\<>]+\.(?:vtt|srt)[^"'\s\\<>]*/g)
+    ].map((m) => m[0]).slice(0, 5) : [],
+    subtitleKeywords: result.html ? [
+      ...result.html.matchAll(/(?:subtitle|sub_url|subUrl|track)["']?\s*[:=]\s*["']([^"']{10,200})["']/gi)
+    ].map((m) => m[1]).slice(0, 5) : [],
+    m3u8All: result.html ? [
+      ...result.html.matchAll(/https?:\/\/[^"'\s\\<>]+\.m3u8[^"'\s\\<>]*/g)
+    ].map((m) => m[0]).slice(0, 5) : []
   });
 });
 app.get("/health", (req, res) => {
