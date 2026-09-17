@@ -520,8 +520,20 @@ function selectAnime(anime, el) {
   selectedName.textContent = anime.title;
   epInput.max = anime.episodes || 9999;
   epInput.value = 1;
-  seasonInput.value = 1;
-  log("Seçildi: " + anime.title);
+
+  // ⚡ AniList title'dan season numarası çıkar
+  let detectedSeason = 1;
+  const titleCheck = (anime.titleEnglish || anime.title || "").toLowerCase();
+  const seasonMatch = titleCheck.match(/season\s*(\d+)/);
+  const secondSeasonMatch = titleCheck.match(/(\d+)(st|nd|rd|th)\s*season/);
+  if (seasonMatch) detectedSeason = parseInt(seasonMatch[1]);
+  else if (secondSeasonMatch) detectedSeason = parseInt(secondSeasonMatch[1]);
+  else if (titleCheck.includes("season 2") || titleCheck.includes("2nd")) detectedSeason = 2;
+  else if (titleCheck.includes("season 3") || titleCheck.includes("3rd")) detectedSeason = 3;
+  else if (titleCheck.includes("season 4") || titleCheck.includes("4th")) detectedSeason = 4;
+
+  seasonInput.value = detectedSeason;
+  log(`Seçildi: ${anime.title} (Sezon ${detectedSeason})`);
   loadCurrentEpisode();
 }
 
