@@ -398,7 +398,7 @@ async function startSubtitleFlow(animeId, episode) {
           subtitlePollInterval = null;
           setSubStatus("loading", "Altyazı yükleniyor...");
           attachTurkishSubtitle();
-        } else if (elapsed > 60) {
+        } else if (elapsed > 180) {
           clearInterval(subtitlePollInterval);
           subtitlePollInterval = null;
           setSubStatus("none", "Altyazı zaman aşımı");
