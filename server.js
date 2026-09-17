@@ -123,8 +123,7 @@ async function callScrapingAnt(targetUrl, country) {
     "x-api-key": CONFIG.SA_KEY,
     browser: "true",
     wait_until: "domcontentloaded",
-    proxy_country: country || "us",
-    block_resource: "image,media,font,stylesheet"
+    proxy_country: country || "us",    
   });
   const apiUrl = `${CONFIG.SA_ENDPOINT}?${params.toString()}`;
   const t0 = Date.now();
