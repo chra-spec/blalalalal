@@ -28,7 +28,7 @@ const CONFIG = {
   API_TIMEOUT: 40000,
   QUEUE_TIMEOUT: 120000,
   STREAM_ROUTE_TIMEOUT: 110000,
-  TRANSLATE_CONCURRENCY: 6,
+  TRANSLATE_CONCURRENCY: 2,
   PLAN: [
     { country: "us", variant: "sub" },
     { country: "us", variant: "sub" }
@@ -325,35 +325,60 @@ function buildVtt(cues) {
 async function translateText(text) {
   if (!text || !text.trim()) return text;
 
-  try {
-    const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl=tr&dt=t&q=${encodeURIComponent(text)}`;
-    const r = await fetch(url, { signal: AbortSignal.timeout(6000) });
-    if (!r.ok) return text;
+  const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl=tr&dt=t&q=${encodeURIComponent(text)}`;
 
-    const d = await r.json();
-    if (!d || !d[0]) return text;
-    return d[0].map((x) => x[0]).join("");
-  } catch (e) {
-    return text;
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      const r = await fetch(url, { signal: AbortSignal.timeout(8000) });
+
+      if (r.status === 429) {
+        await new Promise((res) => setTimeout(res, 1500 * attempt));
+        continue;
+      }
+      if (!r.ok) return text;
+
+      const d = await r.json();
+      if (!d || !d[0]) return text;
+      return d[0].map((x) => x[0]).join("");
+    } catch (e) {
+      await new Promise((res) => setTimeout(res, 1000 * attempt));
+    }
   }
+  return text;
 }
 
 async function translateAll(texts) {
   const results = new Array(texts.length);
   let cursor = 0;
+  let done = 0;
+  const total = texts.length;
 
   const worker = async () => {
     while (true) {
       const idx = cursor++;
-      if (idx >= texts.length) return;
+      if (idx >= total) return;
+
       results[idx] = await translateText(texts[idx]);
+      done++;
+
+      if (done % 25 === 0 || done === total) {
+        log("SUB", `Progress: ${done}/${total}`);
+      }
+
+      // Rate limit'i yumuşatmak için kısa bekleme
+      await new Promise((res) => setTimeout(res, 120));
     }
   };
 
-  const workerCount = Math.min(CONFIG.TRANSLATE_CONCURRENCY, texts.length);
+  const workerCount = Math.min(CONFIG.TRANSLATE_CONCURRENCY, total);
   const workers = Array(workerCount).fill(0).map(worker);
-  await Promise.all(workers);
 
+  await Promise.race([
+    Promise.all(workers),
+    new Promise((res) => setTimeout(res, 120000))
+  ]);
+
+  log("SUB", `Translate bitis: ${done}/${total}`);
   return results;
 }
 
