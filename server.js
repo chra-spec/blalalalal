@@ -800,6 +800,177 @@ io.on("connection", (socket) => {
   });
 });
 
+// ═══════════════════════════════════════════════════════════
+// DIŞ SİTELER İÇİN API (CORS açık)
+// ═══════════════════════════════════════════════════════════
+
+const EXT_API_KEY = "anime_ext_2026_kwwn";  // ⚡ kendi key'ini yaz
+
+// Arama API'si
+app.get("/api/ext/search", async (req, res) => {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Headers", "*");
+  try {
+    const { q, key } = req.query;
+    if (key !== EXT_API_KEY) return res.status(401).json({ error: "Gecersiz API key" });
+    if (!q || q.length < 2) return res.json({ results: [] });
+
+    const body = {
+      query: "query($s:String){Page(perPage:25){media(search:$s,type:ANIME,sort:TRENDING_DESC){id title{english romaji native} episodes format seasonYear coverImage{large} averageScore}}}",
+      variables: { s: q.trim() }
+    };
+    const r = await fetch("https://graphql.anilist.co", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body)
+    });
+    const d = await r.json();
+    const m = (d.data && d.data.Page && d.data.Page.media) || [];
+
+    res.json({
+      results: m.map((x) => ({
+        id: x.id,
+        title: x.title.english || x.title.romaji || x.title.native,
+        titleEnglish: x.title.english || "",
+        titleRomaji: x.title.romaji || "",
+        episodes: x.episodes || 0,
+        format: x.format || "TV",
+        year: x.seasonYear || "",
+        poster: x.coverImage ? x.coverImage.large : "",
+        score: x.averageScore || 0
+      }))
+    });
+  } catch (e) {
+    res.json({ results: [], error: e.message });
+  }
+});
+
+// Video stream API'si
+app.get("/api/ext/stream", async (req, res) => {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Headers", "*");
+  try {
+    const { id, ep, mode, key } = req.query;
+    if (key !== EXT_API_KEY) return res.status(401).json({ error: "Gecersiz API key" });
+    if (!id || !ep) return res.status(400).json({ error: "id ve ep gerekli" });
+
+    const videoMode = mode === "dub" ? "dub" : "sub";
+    const cacheKey = `${id}_${ep}_${videoMode}`;
+
+    if (streamInfoCache.has(cacheKey)) {
+      const info = streamInfoCache.get(cacheKey);
+      return res.json({
+        url: info.m3u8,
+        mode: info.mode,
+        cached: true,
+        proxyUrl: "/api/proxy?url=" + encodeURIComponent(info.m3u8)
+      });
+    }
+
+    const info = await scraperQueue.run(() => fetchStreamInfo(id, ep, videoMode));
+    if (!info || !info.m3u8) return res.status(404).json({ error: "Video bulunamadi" });
+
+    streamInfoCache.set(cacheKey, { m3u8: info.m3u8, subtitleUrl: info.subtitleUrl, mode: info.mode });
+    setTimeout(() => streamInfoCache.delete(cacheKey), CONFIG.CACHE_TTL);
+
+    res.json({
+      url: info.m3u8,
+      mode: info.mode,
+      proxyUrl: "/api/proxy?url=" + encodeURIComponent(info.m3u8)
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Altyazı API'si (dış siteler için)
+app.get("/api/ext/subtitle", async (req, res) => {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Headers", "*");
+  try {
+    const { id, ep, mode, season, title, key } = req.query;
+    if (key !== EXT_API_KEY) return res.status(401).send("Gecersiz API key");
+    if (!id || !ep) return res.status(400).send("id ve ep gerekli");
+
+    const videoMode = mode === "dub" ? "dub" : "sub";
+    const cacheKey = `${id}_${ep}_${videoMode}`;
+
+    if (subtitleCache.has(cacheKey)) {
+      res.setHeader("Content-Type", "text/vtt; charset=utf-8");
+      return res.send(subtitleCache.get(cacheKey));
+    }
+
+    if (title) {
+      const seasonNum = parseInt(season) || 1;
+      const episodeNum = parseInt(ep) || 1;
+      const vtt = await fetchTurkishSubtitle(decodeURIComponent(title), seasonNum, episodeNum);
+      if (vtt) {
+        subtitleCache.set(cacheKey, vtt);
+        setTimeout(() => subtitleCache.delete(cacheKey), CONFIG.SUB_CACHE_TTL);
+        res.setHeader("Content-Type", "text/vtt; charset=utf-8");
+        return res.send(vtt);
+      }
+    }
+    return res.status(404).send("altyazi yok");
+  } catch (e) {
+    res.status(500).send(e.message);
+  }
+});
+
+// Sağlık kontrolü (dış API durumu)
+app.get("/api/ext/health", (req, res) => {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.json({ status: "ok", service: "anime-stream-api", version: "1.0" });
+});
+// ═══════════════════════════════════════════════════════════
+// PREFETCH — Altyazıyı arka planda hazırla (m3u8 çekmeden)
+// ═══════════════════════════════════════════════════════════
+
+app.get("/api/prefetch-subtitle", async (req, res) => {
+  try {
+    const { id, ep, mode, season, title } = req.query;
+    if (!id || !ep || !title) return res.status(400).json({ error: "Eksik parametre" });
+
+    const videoMode = mode === "dub" ? "dub" : "sub";
+    const key = `${id}_${ep}_${videoMode}`;
+
+    if (subtitleCache.has(key)) {
+      log("PREFETCH", `S${season}E${ep} hazir (cache)`);
+      return res.json({ status: "cached", episode: ep });
+    }
+
+    if (subtitleJobs.has(key)) {
+      log("PREFETCH", `S${season}E${ep} zaten islemde`);
+      return res.json({ status: "processing", episode: ep });
+    }
+
+    const seasonNum = parseInt(season) || 1;
+    const episodeNum = parseInt(ep) || 1;
+
+    log("PREFETCH", `S${seasonNum}E${episodeNum} baslatildi`);
+
+    subtitleJobs.set(
+      key,
+      fetchTurkishSubtitle(decodeURIComponent(title), seasonNum, episodeNum).then((vtt) => {
+        if (vtt) {
+          subtitleCache.set(key, vtt);
+          setTimeout(() => subtitleCache.delete(key), CONFIG.SUB_CACHE_TTL);
+          log("PREFETCH", `S${seasonNum}E${episodeNum} hazir`);
+          return { status: "ready", episode: ep };
+        } else {
+          log("PREFETCH", `S${seasonNum}E${episodeNum} bulunamadi`);
+          return { status: "not_found", episode: ep };
+        }
+      }).finally(() => subtitleJobs.delete(key))
+    );
+
+    res.json({ status: "queued", episode: ep });
+  } catch (e) {
+    log("PREFETCH", `Hata: ${e.message}`);
+    res.json({ error: e.message });
+  }
+});
+
 server.listen(CONFIG.PORT, "0.0.0.0", () => {
   console.log("===========================================");
   console.log(`Sunucu ${CONFIG.PORT} portunda`);
