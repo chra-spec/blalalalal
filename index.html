@@ -9,65 +9,93 @@
 <style>
   *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
   body{background:#0a0a14;color:#fff;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;min-height:100vh;overflow-x:hidden}
-  .header{position:sticky;top:0;z-index:100;padding:10px 16px;background:rgba(26,26,46,0.95);backdrop-filter:blur(10px);display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #222}
-  .header h1{font-size:15px;color:#667eea;font-weight:700}
-  .badge{padding:4px 12px;border-radius:12px;font-size:11px;font-weight:700}
+  .header{position:sticky;top:0;z-index:100;padding:12px 16px;background:rgba(26,26,46,0.95);backdrop-filter:blur(10px);display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #222}
+  .header h1{font-size:15px;color:#667eea;font-weight:700;display:flex;align-items:center;gap:8px}
+  .badge{padding:5px 12px;border-radius:12px;font-size:11px;font-weight:700;display:flex;align-items:center;gap:5px}
   .badge.admin{background:#f39c12;color:#000;box-shadow:0 0 12px rgba(243,156,18,0.5)}
   .badge.viewer{background:#333;color:#ccc}
   .badge.connecting{background:#555;color:#fff;animation:pulse 1.5s infinite}
   @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.5}}
-  .video-wrap{position:relative;width:100%;background:#000;aspect-ratio:16/9;max-height:60vh}
+
+  .video-wrap{position:relative;width:100%;background:#000;aspect-ratio:16/9;max-height:55vh}
   .video-wrap video{width:100%;height:100%;display:block;background:#000}
-  .video-wrap video::cue{background:rgba(0,0,0,0.75);color:#fff;font-size:18px;font-weight:600}
+  .video-wrap video::cue{background:rgba(0,0,0,0.75);color:#fff;font-size:20px;font-weight:600}
   .video-overlay{position:absolute;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.88);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;color:#ccc;font-size:14px;text-align:center;padding:24px;z-index:5}
   .video-overlay.hidden{display:none}
   .video-overlay .msg{line-height:1.5;max-width:400px}
-  .spinner{width:32px;height:32px;border:3px solid rgba(102,126,234,0.2);border-top-color:#667eea;border-radius:50%;animation:spin 0.8s linear infinite}
+  .spinner{width:36px;height:36px;border:3px solid rgba(102,126,234,0.2);border-top-color:#667eea;border-radius:50%;animation:spin 0.8s linear infinite}
   @keyframes spin{to{transform:rotate(360deg)}}
-  .status-bar{padding:7px 14px;background:#12121f;font-size:11px;color:#888;display:flex;justify-content:space-between;border-bottom:1px solid #222;align-items:center;gap:8px;flex-wrap:wrap}
+
+  .status-bar{padding:9px 14px;background:#12121f;font-size:12px;color:#888;display:flex;justify-content:space-between;border-bottom:1px solid #222;align-items:center;gap:8px;flex-wrap:wrap}
   .status-bar .live{color:#e74c3c;font-weight:700;display:flex;align-items:center;gap:6px}
   .status-bar .live::before{content:"";width:7px;height:7px;background:#e74c3c;border-radius:50%;animation:pulse 1.5s infinite}
-  .sub-status{display:flex;align-items:center;gap:6px;font-size:10px;padding:3px 9px;border-radius:10px;background:#222}
+  .sub-status{display:flex;align-items:center;gap:6px;font-size:11px;padding:4px 10px;border-radius:10px;background:#222}
   .sub-status.ok{background:rgba(39,174,96,0.2);color:#27ae60}
   .sub-status.loading{background:rgba(243,156,18,0.2);color:#f39c12}
   .sub-status.none{background:#222;color:#666}
-  .admin-panel{display:none;padding:12px;max-width:1200px;margin:0 auto}
+
+  .admin-panel{display:none;padding:14px;max-width:1200px;margin:0 auto}
   .admin-panel.show{display:block}
-  .section-title{font-size:12px;color:#667eea;font-weight:700;margin-bottom:8px;text-transform:uppercase;letter-spacing:0.5px}
-  .search-box{display:flex;gap:6px;margin-bottom:12px}
-  .search-box input{flex:1;padding:10px 14px;border:2px solid #333;border-radius:10px;background:#1a1a2e;color:#fff;font-size:14px;outline:none;transition:border-color 0.2s}
+  .section-title{font-size:12px;color:#667eea;font-weight:700;margin-bottom:10px;text-transform:uppercase;letter-spacing:0.5px;display:flex;align-items:center;gap:6px}
+
+  .search-box{display:flex;gap:8px;margin-bottom:14px}
+  .search-box input{flex:1;padding:12px 16px;border:2px solid #333;border-radius:12px;background:#1a1a2e;color:#fff;font-size:15px;outline:none;transition:border-color 0.2s}
   .search-box input:focus{border-color:#667eea}
-  .search-box button{padding:10px 20px;background:#667eea;color:#fff;border:none;border-radius:10px;font-weight:700;font-size:13px;cursor:pointer}
+  .search-box button{padding:12px 22px;background:#667eea;color:#fff;border:none;border-radius:12px;font-weight:700;font-size:14px;cursor:pointer;display:flex;align-items:center;gap:6px}
   .search-box button:disabled{background:#333;cursor:not-allowed}
-  .results{display:grid;grid-template-columns:repeat(auto-fill,minmax(88px,1fr));gap:8px;margin-bottom:12px}
-  .result{background:#1a1a2e;border-radius:8px;overflow:hidden;cursor:pointer;transition:transform 0.15s,border-color 0.15s;border:2px solid transparent;position:relative}
+
+  .results{display:grid;grid-template-columns:repeat(auto-fill,minmax(88px,1fr));gap:8px;margin-bottom:14px}
+  .result{background:#1a1a2e;border-radius:8px;overflow:hidden;cursor:pointer;transition:transform 0.15s,border-color 0.15s;border:2px solid transparent}
   .result:hover{transform:translateY(-2px);border-color:#667eea}
   .result.selected{border-color:#27ae60}
   .result.disabled{opacity:0.5;cursor:wait;pointer-events:none}
   .result img{width:100%;aspect-ratio:2/3;object-fit:cover;display:block;background:#333}
   .result-title{padding:5px;font-size:10px;line-height:1.25;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
   .result-meta{padding:0 5px 5px;font-size:9px;color:#666}
-  .controls{display:flex;gap:8px;padding:10px;background:#1a1a2e;border-radius:10px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
-  .controls label{font-size:11px;color:#888}
-  .controls input,.controls select{padding:7px 10px;background:#0a0a14;color:#fff;border:1px solid #333;border-radius:6px;font-size:13px;text-align:center}
-  .controls input{width:65px}
-  .controls .info{flex:1;min-width:0;font-size:12px;color:#aaa;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .controls .sub-badge{padding:3px 9px;border-radius:10px;font-size:10px;font-weight:600}
-  .controls .sub-badge.yes{background:rgba(39,174,96,0.2);color:#27ae60}
-  .controls .sub-badge.no{background:#333;color:#888}
-  .viewer-info{padding:20px;text-align:center;color:#666;font-size:12px;max-width:600px;margin:0 auto}
-  .viewer-info .big{font-size:42px;margin-bottom:12px;opacity:0.5}
-  .log{max-width:1200px;margin:0 auto;padding:0 12px 20px}
-  .log .line{padding:3px 0;font-size:10px;color:#555;font-family:'Courier New',monospace}
-  .toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#2d2d44;padding:10px 18px;border-radius:10px;font-size:12px;z-index:1000;animation:slideUp 0.3s;box-shadow:0 4px 20px rgba(0,0,0,0.5);max-width:90%}
+
+  .controls{padding:14px;background:#1a1a2e;border-radius:12px;margin-bottom:14px;display:flex;flex-direction:column;gap:12px}
+  .controls-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .controls-row.center{justify-content:center}
+
+  .ctrl-btn{padding:10px 16px;background:#0a0a14;color:#fff;border:1px solid #333;border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:all 0.15s}
+  .ctrl-btn:hover{background:#252540;border-color:#667eea}
+  .ctrl-btn:disabled{opacity:0.35;cursor:not-allowed}
+  .ctrl-btn.primary{background:#667eea;border-color:#667eea}
+  .ctrl-btn.primary:hover{background:#5568d3}
+  .ctrl-btn svg{width:18px;height:18px}
+
+  .ep-display{display:inline-flex;align-items:center;gap:10px;padding:8px 18px;background:#0a0a14;border-radius:10px;border:1px solid #333}
+  .ep-display .label{font-size:11px;color:#888;text-transform:uppercase}
+  .ep-display .value{font-size:16px;font-weight:700;color:#667eea;min-width:20px;text-align:center}
+
+  .season-display{display:inline-flex;align-items:center;gap:8px;padding:9px 16px;background:#0a0a14;border-radius:10px;border:1px solid #333;font-size:13px;color:#ccc}
+
+  .mode-select{padding:10px 16px;background:#0a0a14;color:#fff;border:1px solid #333;border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;outline:none}
+
+  .selected-name{flex:1;min-width:0;font-size:12px;color:#888;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:right}
+
+  .sub-badge{padding:4px 10px;border-radius:10px;font-size:10px;font-weight:600}
+  .sub-badge.yes{background:rgba(39,174,96,0.2);color:#27ae60}
+  .sub-badge.no{background:#333;color:#888}
+
+  .viewer-info{padding:20px;text-align:center;color:#666;font-size:13px;max-width:600px;margin:0 auto}
+  .viewer-info svg{width:52px;height:52px;margin-bottom:14px;opacity:0.4;stroke:#667eea}
+
+  .toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#2d2d44;padding:11px 18px;border-radius:10px;font-size:13px;z-index:1000;animation:slideUp 0.3s;box-shadow:0 4px 20px rgba(0,0,0,0.5);max-width:90%;display:flex;align-items:center;gap:8px}
   @keyframes slideUp{from{opacity:0;transform:translate(-50%,20px)}to{opacity:1;transform:translate(-50%,0)}}
 </style>
 </head>
 <body>
 
 <div class="header">
-  <h1>🎬 Anime İzle</h1>
-  <span id="badge" class="badge connecting">Bağlanıyor...</span>
+  <h1>
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><polygon points="10 9 15 11.5 10 14 10 9" fill="currentColor"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+    Anime İzle
+  </h1>
+  <span id="badge" class="badge connecting">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+    Bağlanıyor
+  </span>
 </div>
 
 <div class="video-wrap">
@@ -81,42 +109,67 @@
 <div class="status-bar">
   <span id="statusText">Bekleniyor</span>
   <div style="display:flex;gap:6px;align-items:center">
-    <span id="subStatus" class="sub-status none">Altyazı yok</span>
+    <span id="subStatus" class="sub-status none">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="14" rx="2"/><line x1="7" y1="12" x2="10" y2="12"/><line x1="13" y1="12" x2="17" y2="12"/><line x1="7" y1="15" x2="10" y2="15"/><line x1="13" y1="15" x2="17" y2="15"/></svg>
+      Altyazı yok
+    </span>
     <span id="liveBadge" class="live" style="display:none">CANLI</span>
   </div>
 </div>
 
 <div id="adminPanel" class="admin-panel">
-  <div class="section-title">Anime Ara</div>
+  <div class="section-title">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+    Anime Ara
+  </div>
   <div class="search-box">
     <input type="text" id="searchInput" placeholder="Anime adı yaz..." autocomplete="off">
-    <button id="searchBtn" onclick="doSearch()">Ara</button>
+    <button id="searchBtn" onclick="doSearch()">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      Ara
+    </button>
   </div>
   <div id="results" class="results"></div>
 
-  <div class="section-title">Bölüm ve Mod</div>
-  <label>Altyazı Kaydır:</label>
-<button onclick="shiftSubtitle(-1)" style="padding:5px 10px;background:#e74c3c;border:none;border-radius:5px;color:#fff;cursor:pointer;font-weight:700">-1s</button>
-<button onclick="shiftSubtitle(1)" style="padding:5px 10px;background:#27ae60;border:none;border-radius:5px;color:#fff;cursor:pointer;font-weight:700">+1s</button>
-<span id="subOffsetLabel" style="font-size:11px;color:#888">0s</span>
-    <input type="number" id="seasonInput" value="1" min="1" max="20" onchange="onEpChange()">
-    <label>Bölüm:</label>
-    <input type="number" id="epInput" value="1" min="1" max="9999" onchange="onEpChange()">
-    <label>Mod:</label>
-    <select id="modeSelect" onchange="onModeChange()">
-      <option value="sub">Altyazılı</option>
-      <option value="dub">Dublaj</option>
-    </select>
-    <span class="info" id="selectedName">Anime seçilmedi</span>
-    <span class="sub-badge no" id="subBadge">Altyazı yok</span>
+  <div class="section-title">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/><line x1="9" y1="4" x2="9" y2="20"/><line x1="15" y1="4" x2="15" y2="20"/></svg>
+    Video Kontrolü
   </div>
 
-  <div class="section-title">Kayıt</div>
-  <div id="logBox" class="log"></div>
+  <div class="controls">
+    <div class="controls-row center">
+      <button class="ctrl-btn" id="prevEpBtn" onclick="prevEpisode()" title="Önceki Bölüm">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="15 18 9 12 15 6"/></svg>
+      </button>
+      <div class="ep-display">
+        <span class="label">Bölüm</span>
+        <span class="value" id="epDisplay">1</span>
+      </div>
+      <button class="ctrl-btn" id="nextEpBtn" onclick="nextEpisode()" title="Sonraki Bölüm">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="9 18 15 12 9 6"/></svg>
+      </button>
+    </div>
+
+    <div class="controls-row center">
+      <div class="season-display">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>
+        Sezon <span id="seasonDisplay" style="color:#667eea;font-weight:700">1</span>
+      </div>
+      <select class="mode-select" id="modeSelect" onchange="onModeChange()">
+        <option value="sub">Altyazılı</option>
+        <option value="dub">Dublaj</option>
+      </select>
+      <span class="sub-badge no" id="subBadge">Altyazı yok</span>
+    </div>
+
+    <div class="controls-row">
+      <span class="selected-name" id="selectedName">Anime seçilmedi</span>
+    </div>
+  </div>
 </div>
 
 <div id="viewerInfo" class="viewer-info" style="display:none">
-  <div class="big">📺</div>
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><polygon points="10 9 15 11.5 10 14 10 9"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
   <div>Yönetici bir video başlattığında otomatik olarak görünecek.</div>
   <div style="margin-top:8px;font-size:11px;color:#444">Türkçe altyazı otomatik hazırlanır.</div>
 </div>
@@ -140,49 +193,34 @@ const statusText = document.getElementById("statusText");
 const subStatus = document.getElementById("subStatus");
 const liveBadge = document.getElementById("liveBadge");
 const resultsBox = document.getElementById("results");
-const epInput = document.getElementById("epInput");
-const seasonInput = document.getElementById("seasonInput");
+const epDisplay = document.getElementById("epDisplay");
+const seasonDisplay = document.getElementById("seasonDisplay");
 const modeSelect = document.getElementById("modeSelect");
 const selectedName = document.getElementById("selectedName");
 const subBadge = document.getElementById("subBadge");
-const logBox = document.getElementById("logBox");
+const prevEpBtn = document.getElementById("prevEpBtn");
+const nextEpBtn = document.getElementById("nextEpBtn");
 
 let socket = null;
 let isAdmin = false;
 let currentAnime = null;
 let currentVideoKey = null;
+let currentEpisode = 1;
+let currentSeason = 1;
+let maxEpisodes = 0;
 let hls = null;
 let syncing = false;
 let hasVideo = false;
 let isLoading = false;
 let trTrack = null;
 let subtitlePollInterval = null;
-let lastKnownTime = 0;
-let lastKnownKey = null;
 let restoringPosition = false;
-let subtitleOffset = 0;
-const subtitleOffsetStore = {
-  get: (key) => {
-    try { return parseFloat(localStorage.getItem("subOffset_" + key) || "0"); } catch (e) { return 0; }
-  },
-  set: (key, val) => {
-    try { localStorage.setItem("subOffset_" + key, String(val)); } catch (e) {}
-  }
-};
-function log(msg) {
-  const line = document.createElement("div");
-  line.className = "line";
-  const t = new Date().toLocaleTimeString("tr-TR");
-  line.textContent = `[${t}] ${msg}`;
-  logBox.appendChild(line);
-  logBox.scrollTop = logBox.scrollHeight;
-  while (logBox.children.length > 60) logBox.removeChild(logBox.firstChild);
-}
+let saveInterval = null;
 
 function toast(msg) {
   const t = document.createElement("div");
   t.className = "toast";
-  t.textContent = msg;
+  t.innerHTML = msg;
   document.body.appendChild(t);
   setTimeout(() => t.remove(), 3500);
 }
@@ -198,40 +236,48 @@ function hideOverlay() {
 }
 
 function setSubStatus(state, text) {
+  const icons = {
+    ok: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>',
+    loading: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>',
+    none: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="14" rx="2"/><line x1="7" y1="12" x2="10" y2="12"/><line x1="13" y1="12" x2="17" y2="12"/><line x1="7" y1="15" x2="10" y2="15"/><line x1="13" y1="15" x2="17" y2="15"/></svg>'
+  };
   subStatus.className = "sub-status " + state;
-  subStatus.textContent = text;
+  subStatus.innerHTML = icons[state] + ' ' + text;
   subBadge.className = "sub-badge " + (state === "ok" ? "yes" : "no");
   subBadge.textContent = text;
 }
 
+function updateEpisodeUI() {
+  epDisplay.textContent = currentEpisode;
+  seasonDisplay.textContent = currentSeason;
+  prevEpBtn.disabled = currentEpisode <= 1 || isLoading;
+  nextEpBtn.disabled = (maxEpisodes > 0 && currentEpisode >= maxEpisodes) || isLoading;
+}
+
 function connectSocket() {
-  log("Sunucuya bağlanılıyor...");
   socket = io({ transports: ["websocket", "polling"], reconnection: true, reconnectionAttempts: Infinity });
 
   socket.on("connect", () => {
-    log("Bağlantı kuruldu: " + socket.id);
     socket.emit("join", { deviceId });
   });
 
   socket.on("disconnect", () => {
-    log("Bağlantı koptu, yeniden bağlanılıyor...");
     badge.className = "badge connecting";
-    badge.textContent = "Bağlanıyor...";
+    badge.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg> Bağlanıyor';
   });
 
   socket.on("you-are", (data) => {
     isAdmin = !!data.isAdmin;
-    log(`Rol: ${isAdmin ? "YÖNETİCİ" : "İZLEYİCİ"}`);
     if (isAdmin) {
       badge.className = "badge admin";
-      badge.textContent = "👑 YÖNETİCİ";
+      badge.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M2 4l3 12h14l3-12-6 7-4-7-4 7z"/><line x1="5" y1="20" x2="19" y2="20"/></svg> Yönetici';
       adminPanel.classList.add("show");
       viewerInfo.style.display = "none";
       if (!hasVideo) setOverlay("Anime ara ve bölüm seç.<br>Seçtiğinde herkese yayınlanır.", false);
       statusText.textContent = "Yönetici modu";
     } else {
       badge.className = "badge viewer";
-      badge.textContent = "👤 İZLEYİCİ";
+      badge.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg> İzleyici';
       adminPanel.classList.remove("show");
       viewerInfo.style.display = "block";
       if (!hasVideo) setOverlay("Yönetici bekleniyor...", false);
@@ -240,27 +286,21 @@ function connectSocket() {
   });
 
   socket.on("video-load", (data) => {
-    log("Video: " + data.title);
     hasVideo = true;
     hideOverlay();
     liveBadge.style.display = "flex";
 
     const newKey = `${data.animeId}_${data.episode}_${data.mode || "sub"}`;
-    const isSameVideo = currentVideoKey === newKey;
     currentVideoKey = newKey;
-
-    if (!isSameVideo) {
-      lastKnownTime = 0;
-      lastKnownKey = newKey;
-    }
+    currentEpisode = data.episode || 1;
+    currentSeason = data.season || 1;
+    updateEpisodeUI();
 
     loadVideoSource(data.url);
     if (data.title) statusText.textContent = data.title;
     if (data.mode) modeSelect.value = data.mode;
-    if (data.season) seasonInput.value = data.season;
 
     if (data.animeId && data.episode) {
-      const animeTitle = (currentAnime && currentAnime.title) || data.title || "";
       const anime = currentAnime || {
         id: data.animeId,
         title: data.title || "",
@@ -282,7 +322,7 @@ function connectSocket() {
     setTimeout(() => applyControl(data), 500);
   });
 
-  socket.on("error-msg", (data) => log("Uyarı: " + data.message));
+  socket.on("error-msg", (data) => toast('<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#f39c12" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg> ' + data.message));
 }
 
 function loadVideoSource(rawUrl) {
@@ -315,18 +355,27 @@ function loadVideoSource(rawUrl) {
       for (let i = 0; i < vt.length; i++) {
         vt[i].mode = "disabled";
       }
-      if (lastKnownTime > 2 && video.currentTime < 2 && lastKnownKey === currentVideoKey) {
-        restoringPosition = true;
-        setTimeout(() => {
-          try { video.currentTime = lastKnownTime; } catch (e) {}
-          setTimeout(() => { restoringPosition = false; }, 800);
-        }, 400);
+
+      // ⚡ localStorage'dan kaydedilmiş pozisyonu al
+      if (currentVideoKey) {
+        const saved = localStorage.getItem("videoPos_" + currentVideoKey);
+        if (saved) {
+          try {
+            const { time } = JSON.parse(saved);
+            if (time > 2) {
+              restoringPosition = true;
+              setTimeout(() => {
+                try { video.currentTime = time; } catch (e) {}
+                setTimeout(() => { restoringPosition = false; }, 1200);
+              }, 500);
+            }
+          } catch (e) {}
+        }
       }
-      log("Video hazır");
     });
 
     hls.on(Hls.Events.ERROR, (e, d) => {
-      if (d.fatal) log("Video hatası: " + d.details);
+      if (d.fatal) toast('<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#e74c3c" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg> Video hatası');
     });
   } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
     video.src = proxyUrl;
@@ -362,18 +411,61 @@ video.addEventListener("seeked", () => {
   if (!isAdmin || syncing || restoringPosition) return;
   socket.emit("video-control", { action: "seek", currentTime: video.currentTime, at: Date.now() });
 });
-video.addEventListener("timeupdate", () => {
-  if (!restoringPosition && hasVideo) {
-    lastKnownTime = video.currentTime;
+
+// ⚡ Konumu düzenli kaydet
+setInterval(() => {
+  if (hasVideo && currentVideoKey && video.currentTime > 1) {
+    try {
+      localStorage.setItem("videoPos_" + currentVideoKey, JSON.stringify({
+        time: video.currentTime,
+        at: Date.now()
+      }));
+    } catch (e) {}
+  }
+}, 2000);
+
+// ⚡ Sekme arka plana atıldığında duraklat, geri gelince aynı yerden devam et
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) {
+    // Duraklat
+    if (hasVideo && video && !video.paused) {
+      try { video.pause(); } catch (e) {}
+    }
+    // Pozisyonu kaydet
+    if (hasVideo && currentVideoKey) {
+      try {
+        localStorage.setItem("videoPos_" + currentVideoKey, JSON.stringify({
+          time: video.currentTime,
+          at: Date.now()
+        }));
+      } catch (e) {}
+    }
+  } else {
+    // Geri geldiğinde
+    if (socket && socket.connected) socket.emit("request-sync");
+
+    // Pozisyonu geri yükle
+    if (hasVideo && currentVideoKey) {
+      const saved = localStorage.getItem("videoPos_" + currentVideoKey);
+      if (saved) {
+        try {
+          const { time } = JSON.parse(saved);
+          if (time > 2 && Math.abs(video.currentTime - time) > 2) {
+            restoringPosition = true;
+            setTimeout(() => {
+              try { video.currentTime = time; } catch (e) {}
+              setTimeout(() => { restoringPosition = false; }, 1200);
+            }, 300);
+          }
+        } catch (e) {}
+      }
+    }
   }
 });
 
 function attachTurkishSubtitle(animeId, ep, mode, season, anime) {
   if (!animeId) return;
-const offsetKey = `${animeId}_${ep}_${mode}`;
-subtitleOffset = subtitleOffsetStore.get(offsetKey);
-const offsetLabel = document.getElementById("subOffsetLabel");
-if (offsetLabel) offsetLabel.textContent = (subtitleOffset > 0 ? "+" : "") + subtitleOffset + "s";
+
   video.querySelectorAll("track").forEach((t) => t.remove());
   trTrack = null;
 
@@ -381,8 +473,7 @@ if (offsetLabel) offsetLabel.textContent = (subtitleOffset > 0 ? "+" : "") + sub
   const romaji = encodeURIComponent(anime.titleRomaji || "");
   const titleForOs = title || romaji;
 
-  const url = `/api/subtitle?id=${animeId}&ep=${ep}&mode=${mode}&season=${season}&lang=tr&title=${titleForOs}&offset=${subtitleOffset}&t=${Date.now()}`;
-  log("Türkçe altyazı yükleniyor...");
+  const url = `/api/subtitle?id=${animeId}&ep=${ep}&mode=${mode}&season=${season}&lang=tr&title=${titleForOs}&t=${Date.now()}`;
 
   const track = document.createElement("track");
   track.kind = "subtitles";
@@ -404,10 +495,7 @@ if (offsetLabel) offsetLabel.textContent = (subtitleOffset > 0 ? "+" : "") + sub
         tracks[i].mode = "disabled";
       }
     }
-    if (found) {
-      log("Türkçe altyazı aktif");
-      setSubStatus("ok", "Altyazı: Türkçe");
-    }
+    if (found) setSubStatus("ok", "Altyazı: Türkçe");
   };
 
   setTimeout(forceShow, 400);
@@ -415,20 +503,12 @@ if (offsetLabel) offsetLabel.textContent = (subtitleOffset > 0 ? "+" : "") + sub
   setTimeout(forceShow, 2500);
   setTimeout(forceShow, 5000);
 
-  track.addEventListener("load", () => {
-    log("Türkçe altyazı yüklendi");
-    forceShow();
-  });
-
-  track.addEventListener("error", () => {
-    log("Altyazı yükleme hatası");
-    setSubStatus("none", "Altyazı bulunamadı");
-  });
+  track.addEventListener("load", forceShow);
+  track.addEventListener("error", () => setSubStatus("none", "Altyazı bulunamadı"));
 }
 
 async function startSubtitleFlow(animeId, episode, mode, season, anime) {
   setSubStatus("loading", "Altyazı hazırlanıyor...");
-  log("Altyazı hazırlanıyor...");
 
   let elapsed = 0;
   if (subtitlePollInterval) clearInterval(subtitlePollInterval);
@@ -450,28 +530,7 @@ async function startSubtitleFlow(animeId, episode, mode, season, anime) {
     } catch (e) {}
   }, 2000);
 }
-function shiftSubtitle(seconds) {
-  if (!currentAnime) return;
-  const ep = parseInt(epInput.value) || 1;
-  const mode = modeSelect.value || "sub";
-  const key = `${currentAnime.id}_${ep}_${mode}`;
 
-  subtitleOffset = Math.round((subtitleOffset + seconds) * 10) / 10;
-  if (subtitleOffset > 30) subtitleOffset = 30;
-  if (subtitleOffset < -30) subtitleOffset = -30;
-
-  subtitleOffsetStore.set(key, subtitleOffset);
-
-  const offsetLabel = document.getElementById("subOffsetLabel");
-  if (offsetLabel) offsetLabel.textContent = (subtitleOffset > 0 ? "+" : "") + subtitleOffset + "s";
-
-  log(`Altyazı kaydırma: ${subtitleOffset > 0 ? "+" : ""}${subtitleOffset}s`);
-
-  // Altyazıyı yeniden yükle (yeni offset ile)
-  if (hasVideo && currentAnime) {
-    attachTurkishSubtitle(currentAnime.id, ep, mode, parseInt(seasonInput.value) || 1, currentAnime);
-  }
-}
 function resetSubtitleState() {
   if (subtitlePollInterval) {
     clearInterval(subtitlePollInterval);
@@ -485,9 +544,8 @@ async function doSearch() {
   if (q.length < 2) return;
   const btn = document.getElementById("searchBtn");
   btn.disabled = true;
-  btn.textContent = "...";
+  btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>';
   resultsBox.innerHTML = '<div style="padding:12px;color:#888;font-size:12px">Aranıyor...</div>';
-  log("Ara: " + q);
   try {
     const r = await fetch("/api/search?q=" + encodeURIComponent(q));
     const d = await r.json();
@@ -503,12 +561,11 @@ async function doSearch() {
       c.onclick = () => selectAnime(x, c);
       resultsBox.appendChild(c);
     });
-    log(`${d.results.length} sonuç bulundu`);
   } catch (e) {
-    log("Arama hatası: " + e.message);
+    resultsBox.innerHTML = '<div style="padding:12px;color:#e74c3c;font-size:12px">Hata</div>';
   } finally {
     btn.disabled = false;
-    btn.textContent = "Ara";
+    btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg> Ara';
   }
 }
 
@@ -518,10 +575,10 @@ function selectAnime(anime, el) {
   el.classList.add("selected");
   currentAnime = anime;
   selectedName.textContent = anime.title;
-  epInput.max = anime.episodes || 9999;
-  epInput.value = 1;
+  maxEpisodes = anime.episodes || 0;
+  currentEpisode = 1;
 
-  // ⚡ AniList title'dan season numarası çıkar
+  // AniList title'dan sezon numarası çıkar
   let detectedSeason = 1;
   const titleCheck = (anime.titleEnglish || anime.title || "").toLowerCase();
   const seasonMatch = titleCheck.match(/season\s*(\d+)/);
@@ -532,14 +589,23 @@ function selectAnime(anime, el) {
   else if (titleCheck.includes("season 3") || titleCheck.includes("3rd")) detectedSeason = 3;
   else if (titleCheck.includes("season 4") || titleCheck.includes("4th")) detectedSeason = 4;
 
-  seasonInput.value = detectedSeason;
-  log(`Seçildi: ${anime.title} (Sezon ${detectedSeason})`);
+  currentSeason = detectedSeason;
+  updateEpisodeUI();
   loadCurrentEpisode();
 }
 
-function onEpChange() {
-  if (!currentAnime || isLoading) return;
-  loadCurrentEpisode();
+function prevEpisode() {
+  if (currentEpisode > 1 && !isLoading) {
+    currentEpisode--;
+    loadCurrentEpisode();
+  }
+}
+
+function nextEpisode() {
+  if (!isLoading && (maxEpisodes === 0 || currentEpisode < maxEpisodes)) {
+    currentEpisode++;
+    loadCurrentEpisode();
+  }
 }
 
 function onModeChange() {
@@ -551,16 +617,16 @@ async function loadCurrentEpisode() {
   if (!currentAnime) return;
   if (isLoading) return;
   isLoading = true;
+  updateEpisodeUI();
 
   document.querySelectorAll(".result").forEach((x) => x.classList.add("disabled"));
 
-  const ep = parseInt(epInput.value) || 1;
-  const season = parseInt(seasonInput.value) || 1;
+  const ep = currentEpisode;
+  const season = currentSeason;
   const mode = modeSelect.value || "sub";
 
   setOverlay("Video kaynağı alınıyor...<br><span style='font-size:11px;color:#888'>10-20 saniye sürebilir</span>");
   resetSubtitleState();
-  log(`Bölüm ${ep} (${mode}, S${season}) yükleniyor...`);
 
   try {
     const title = encodeURIComponent(currentAnime.titleEnglish || currentAnime.title || "");
@@ -568,13 +634,11 @@ async function loadCurrentEpisode() {
     const d = await r.json();
 
     if (d.error) {
-      log("Hata: " + d.error);
       setOverlay("❌ " + d.error, false);
-      toast("Hata: " + d.error);
+      toast('<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#e74c3c" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg> ' + d.error);
       return;
     }
 
-    log("Video hazır" + (d.cached ? " (önbellek)" : ""));
     hasVideo = true;
     hideOverlay();
     liveBadge.style.display = "flex";
@@ -594,13 +658,11 @@ async function loadCurrentEpisode() {
     });
 
     startSubtitleFlow(currentAnime.id, ep, mode, season, currentAnime);
-
-    log("Yayınlandı: " + videoTitle);
   } catch (e) {
-    log("Hata: " + e.message);
     setOverlay("❌ " + e.message, false);
   } finally {
     isLoading = false;
+    updateEpisodeUI();
     document.querySelectorAll(".result").forEach((x) => x.classList.remove("disabled"));
   }
 }
@@ -615,6 +677,7 @@ function escapeHtml(t) {
   return d.innerHTML;
 }
 
+// İzleyici: native video kontrollerini gizle
 setInterval(() => {
   if (video && !isAdmin) {
     if (video.hasAttribute("controls")) video.removeAttribute("controls");
@@ -623,18 +686,28 @@ setInterval(() => {
   }
 }, 500);
 
-document.addEventListener("visibilitychange", () => {
-  if (!document.hidden && socket && socket.connected) {
-    socket.emit("request-sync");
-    if (lastKnownTime > 2 && Math.abs(video.currentTime - lastKnownTime) > 3) {
-      restoringPosition = true;
-      video.currentTime = lastKnownTime;
-      setTimeout(() => { restoringPosition = false; }, 800);
-    }
+// Klavye kısayolları (admin için)
+document.addEventListener("keydown", (e) => {
+  if (!isAdmin || !hasVideo) return;
+  if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA" || e.target.tagName === "SELECT") return;
+
+  if (e.key === "ArrowLeft") {
+    e.preventDefault();
+    video.currentTime = Math.max(0, video.currentTime - 5);
+  } else if (e.key === "ArrowRight") {
+    e.preventDefault();
+    video.currentTime = Math.min(video.duration || 0, video.currentTime + 5);
+  } else if (e.key === " ") {
+    e.preventDefault();
+    if (video.paused) video.play().catch(() => {});
+    else video.pause();
+  } else if (e.key === "n" || e.key === "N") {
+    nextEpisode();
+  } else if (e.key === "p" || e.key === "P") {
+    prevEpisode();
   }
 });
 
-log("Uygulama başladı");
 connectSocket();
 </script>
 </body>
