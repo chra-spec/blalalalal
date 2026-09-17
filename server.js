@@ -473,12 +473,6 @@ app.get("/api/proxy", async (req, res) => {
     let url = req.query.url;
     if (!url) return res.status(400).send("url gerekli");
     url = url.replace(/&amp;/g, "&");
-
-    if (!url.includes(".m3u8") && (url.includes("upcloud.animanga.fun") || url.includes("ts-proxy"))) {
-      res.setHeader("Access-Control-Allow-Origin", "*");
-      return res.redirect(302, url);
-    }
-
     const buf = await curlFetch(url);
     if (!buf || buf.length === 0) return res.status(500).send("bos");
 
