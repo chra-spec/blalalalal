@@ -225,7 +225,10 @@ async function fetchM3u8WithPlans(animeId, episode) {
         const m3u8 = extractM3u8(retry.html);
         if (m3u8) {
           log("OK", `Plan#${i + 1} retry`);
-          return m3u8;
+          return {
+            m3u8: m3u8,
+            subtitleUrl: extractSubtitleFromHtml(retry.html)
+          };
         }
       }
       continue;
@@ -243,8 +246,12 @@ async function fetchM3u8WithPlans(animeId, episode) {
 
     const m3u8 = extractM3u8(result.html);
     if (m3u8) {
-      log("OK", `Plan#${i + 1}`);
-      return m3u8;
+      const subFromHtml = extractSubtitleFromHtml(result.html);
+      log("OK", `Plan#${i + 1} subHtml=${subFromHtml ? "var" : "yok"}`);
+      return {
+        m3u8: m3u8,
+        subtitleUrl: subFromHtml
+      };
     }
 
     log("MISS", `Plan#${i + 1} m3u8 yok`);
