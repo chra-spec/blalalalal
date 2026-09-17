@@ -482,13 +482,13 @@ app.get("/api/stream", async (req, res) => {
     if (!res.headersSent) res.json({ error: e.message || "Hata" });
   }
 });
-
 app.get("/api/subtitle", async (req, res) => {
   try {
     const { id, ep, lang } = req.query;
     if (!id || !ep) return res.status(400).send("id ve ep gerekli");
 
     const key = `${id}_${ep}`;
+    log("SUBREQ", `${key} lang=${lang}`);
 
     if (lang === "en") {
       const info = streamInfoCache.get(key);
@@ -500,13 +500,33 @@ app.get("/api/subtitle", async (req, res) => {
     }
 
     if (subtitleCache.has(key)) {
+      log("SUBREQ", `${key} - cache HIT (TR)`);
       res.setHeader("Content-Type", "text/vtt; charset=utf-8");
       return res.send(subtitleCache.get(key));
     }
 
-    const info = streamInfoCache.get(key);
-    if (!info || !info.subtitleUrl) return res.status(404).send("no subtitle");
+    let info = streamInfoCache.get(key);
 
+    if (!info || !info.subtitleUrl) {
+      log("SUBREQ", `${key} - cache bos, yeniden fetch`);
+      try {
+        const fresh = await scraperQueue.run(() => fetchStreamInfo(id, ep));
+        if (fresh) {
+          info = fresh;
+          streamInfoCache.set(key, { m3u8: fresh.m3u8, subtitleUrl: fresh.subtitleUrl });
+          setTimeout(() => streamInfoCache.delete(key), CONFIG.CACHE_TTL);
+        }
+      } catch (e) {
+        log("SUBREQ", `Fetch hata: ${e.message}`);
+      }
+    }
+
+    if (!info || !info.subtitleUrl) {
+      log("SUBREQ", `${key} - subtitle URL yok`);
+      return res.status(404).send("no subtitle");
+    }
+
+    log("SUBREQ", `${key} - ceviri bekleniyor`);
     let job = subtitleJobs.get(key);
     if (!job) {
       job = generateTranslatedSubtitle(info.subtitleUrl, key);
@@ -517,9 +537,11 @@ app.get("/api/subtitle", async (req, res) => {
     const result = await job;
     if (!result) return res.status(500).send("translate fail");
 
+    log("SUBREQ", `${key} - ceviri OK`);
     res.setHeader("Content-Type", "text/vtt; charset=utf-8");
     res.send(result);
   } catch (e) {
+    log("SUBREQ", `Hata: ${e.message}`);
     res.status(500).send(e.message);
   }
 });
