@@ -21,16 +21,19 @@ app.use(express.static(__dirname));
 const CONFIG = {
   PORT: process.env.PORT || 3000,
   ADMIN_FILE: "/data/admin.json",
+
   SA_KEY: "90b9a65c2e799e5af2d8a774cb657e1a",
   SA_ENDPOINT: "https://api.scraperapi.com",
+
+  OS_KEY: "lUQ1BUATojEqaakujSa1KnTzkrlOD6F9",
+  OS_ENDPOINT: "https://api.opensubtitles.com/api/v1",
+
   CACHE_TTL: 60 * 60 * 1000,
   SUB_CACHE_TTL: 6 * 60 * 60 * 1000,
   API_TIMEOUT: 40000,
   QUEUE_TIMEOUT: 120000,
   STREAM_ROUTE_TIMEOUT: 110000,
-  TRANSLATE_CONCURRENCY: 2,
-  TRANSLATE_MAX_FAIL_RATIO: 0.35,
-  TRANSLATE_DELAY_MS: 200,
+
   PLAN_SUB: [
     { country: "us", variant: "sub" },
     { country: "us", variant: "sub" }
@@ -88,6 +91,7 @@ const m3u8Cache = new Map();
 const streamInfoCache = new Map();
 const subtitleCache = new Map();
 const subtitleJobs = new Map();
+const osSearchCache = new Map();
 
 class SerialQueue {
   constructor() {
@@ -95,7 +99,6 @@ class SerialQueue {
     this.running = false;
     this.stats = { total: 0, done: 0, failed: 0 };
   }
-
   run(fn) {
     return new Promise((resolve, reject) => {
       const task = { fn, resolve, reject, id: ++this.stats.total, at: Date.now() };
@@ -104,12 +107,10 @@ class SerialQueue {
       this.process();
     });
   }
-
   async process() {
     if (this.running || this.queue.length === 0) return;
     this.running = true;
     const task = this.queue.shift();
-
     const waited = Date.now() - task.at;
     if (waited > CONFIG.QUEUE_TIMEOUT) {
       task.reject(new Error("kuyruk zaman asimi"));
@@ -117,9 +118,7 @@ class SerialQueue {
       setImmediate(() => this.process());
       return;
     }
-
     log("QUEUE", `Isleniyor #${task.id} bekleme:${(waited / 1000).toFixed(1)}s`);
-
     try {
       const r = await task.fn();
       this.stats.done++;
@@ -132,13 +131,8 @@ class SerialQueue {
       setImmediate(() => this.process());
     }
   }
-
   status() {
-    return {
-      queueLength: this.queue.length,
-      running: this.running,
-      stats: this.stats
-    };
+    return { queueLength: this.queue.length, running: this.running, stats: this.stats };
   }
 }
 
@@ -146,28 +140,20 @@ const scraperQueue = new SerialQueue();
 
 async function callScraperAPI(targetUrl, country) {
   if (!CONFIG.SA_KEY) return { html: null, status: 0, error: "api_key_yok" };
-
   const params = new URLSearchParams({
     api_key: CONFIG.SA_KEY,
     url: targetUrl,
     render: "true",
     country_code: country || "us"
   });
-
   const apiUrl = `${CONFIG.SA_ENDPOINT}?${params.toString()}`;
   const t0 = Date.now();
-
   try {
     const r = await fetch(apiUrl, { signal: AbortSignal.timeout(CONFIG.API_TIMEOUT) });
     const html = await r.text();
     const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
-
     log("API", `HTTP ${r.status} ${country} ${elapsed}s ${html.length}b`);
-
-    if (!r.ok) {
-      return { html: null, status: r.status, elapsed, error: html.slice(0, 300) };
-    }
-
+    if (!r.ok) return { html: null, status: r.status, elapsed, error: html.slice(0, 300) };
     return { html, status: r.status, elapsed };
   } catch (e) {
     const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
@@ -178,33 +164,21 @@ async function callScraperAPI(targetUrl, country) {
 
 function extractM3u8(html) {
   if (!html) return null;
-
   const regex = /https?:\/\/[^"'\s\\<>]+\.m3u8[^"'\s\\<>]*/g;
   const matches = html.match(regex) || [];
-
   const filtered = matches
     .map((u) => decodeHtmlEntities(u))
-    .filter((u) =>
-      !u.includes("index-f1") &&
-      !u.includes("iframes") &&
-      !u.includes("segment")
-    );
-
+    .filter((u) => !u.includes("index-f1") && !u.includes("iframes") && !u.includes("segment"));
   if (filtered.length === 0) return null;
   return filtered.reduce((a, b) => a.length > b.length ? a : b);
 }
 
 function extractSubtitleFromHtml(html) {
   if (!html) return null;
-
   const regex = /https?:\/\/[^"'\s\\<>]+\.(?:vtt|srt)[^"'\s\\<>]*/g;
   const matches = html.match(regex) || [];
-
   if (matches.length === 0) return null;
-
-  const decoded = decodeHtmlEntities(matches[0]);
-  log("SUB", `HTML altyazi bulundu`);
-  return decoded;
+  return decodeHtmlEntities(matches[0]);
 }
 
 function isCloudflareBlock(html) {
@@ -227,15 +201,11 @@ function isConcurrencyError(html) {
 async function fetchStreamInfo(animeId, episode, mode) {
   const baseUrl = `https://vidnest.fun/anime/${animeId}/${episode}`;
   const plan = mode === "dub" ? CONFIG.PLAN_DUB : CONFIG.PLAN_SUB;
-
   for (let i = 0; i < plan.length; i++) {
     const p = plan[i];
     const targetUrl = `${baseUrl}/${p.variant}`;
-
     log("PLAN", `#${i + 1} ${p.variant}/${p.country} (${mode})`);
-
     const result = await callScraperAPI(targetUrl, p.country);
-
     const isLimitError = result.status === 429 || result.status === 409 || result.status === 401 || result.status === 403;
     if (isLimitError || (result.html && isConcurrencyError(result.html))) {
       log("RETRY", "Limit, 6s bekle");
@@ -251,27 +221,22 @@ async function fetchStreamInfo(animeId, episode, mode) {
       }
       continue;
     }
-
     if (!result.html) {
       log("SKIP", `Plan#${i + 1} html yok`);
       continue;
     }
-
     if (isCloudflareBlock(result.html)) {
       log("BLOCK", `Plan#${i + 1} Cloudflare`);
       continue;
     }
-
     const m3u8 = extractM3u8(result.html);
     if (m3u8) {
       const sub = extractSubtitleFromHtml(result.html);
       log("OK", `Plan#${i + 1} sub=${sub ? "var" : "yok"}`);
       return { m3u8, subtitleUrl: sub, mode: p.variant };
     }
-
     log("MISS", `Plan#${i + 1} m3u8 yok`);
   }
-
   return null;
 }
 
@@ -294,169 +259,168 @@ function curlFetch(url) {
   });
 }
 
-function parseVtt(vttText) {
-  if (!vttText) return [];
-  const blocks = vttText.split(/\n\s*\n/);
-  const cues = [];
+// ═══════════════════════════════════════════════════════════
+// SRT → VTT DÖNÜŞTÜRÜCÜ
+// ═══════════════════════════════════════════════════════════
 
-  for (const block of blocks) {
-    const lines = block.split("\n").map((l) => l.trim()).filter((l) => l.length > 0);
-    if (lines.length < 2) continue;
-
-    const timeIdx = lines.findIndex((l) => l.includes("-->"));
-    if (timeIdx === -1) continue;
-
-    const timeLine = lines[timeIdx];
-    const m = timeLine.match(/(\d{1,2}:\d{2}:\d{2}[.,]\d{3})\s*-->\s*(\d{1,2}:\d{2}:\d{2}[.,]\d{3})/);
-    if (!m) continue;
-
-    const textLines = lines.slice(timeIdx + 1);
-    cues.push({
-      start: m[1].replace(",", "."),
-      end: m[2].replace(",", "."),
-      text: textLines.join(" ")
-    });
-  }
-
-  return cues;
+function srtToVtt(srtText) {
+  if (!srtText) return "";
+  const clean = srtText.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  const vtt = "WEBVTT\n\n" + clean
+    .replace(/(\d{2}:\d{2}:\d{2}),(\d{3})/g, "$1.$2")
+    .replace(/^\d+\s*$/gm, "")
+    .replace(/\n{3,}/g, "\n\n");
+  return vtt;
 }
 
-function buildVtt(cues) {
-  let out = "WEBVTT\n\n";
-  cues.forEach((c, i) => {
-    out += `${i + 1}\n${c.start} --> ${c.end}\n${c.text}\n\n`;
+// ═══════════════════════════════════════════════════════════
+// OPENSUBTITLES API
+// ═══════════════════════════════════════════════════════════
+
+function cleanAnimeTitle(title) {
+  if (!title) return "";
+  return title
+    .replace(/\(TV\)|\(OVA\)|\(ONA\)|\(Movie\)/gi, "")
+    .replace(/Season\s*\d+/gi, "")
+    .replace(/:\s*-?Starting.*$/i, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+async function searchOpenSubtitles(query, season, episode) {
+  const cacheKey = `${query}_${season}_${episode}`;
+  if (osSearchCache.has(cacheKey)) {
+    return osSearchCache.get(cacheKey);
+  }
+
+  const params = new URLSearchParams({
+    query: query,
+    languages: "tr",
+    type: "episode"
   });
-  return out;
-}
+  if (season) params.append("season_number", String(season));
+  if (episode) params.append("episode_number", String(episode));
 
-async function translateText(text) {
-  if (!text || !text.trim()) return text;
+  const url = `${CONFIG.OS_ENDPOINT}/subtitles?${params.toString()}`;
+  log("OS", `Arama: ${query} S${season}E${episode}`);
 
-  const clean = text.replace(/\s+/g, " ").trim();
-  const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl=tr&dt=t&q=${encodeURIComponent(clean)}`;
-
-  for (let attempt = 1; attempt <= 4; attempt++) {
-    try {
-      const r = await fetch(url, {
-        signal: AbortSignal.timeout(8000),
-        headers: {
-          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-          "Accept": "*/*",
-          "Accept-Language": "tr-TR,tr;q=0.9,en;q=0.8"
-        }
-      });
-
-      if (r.status === 429) {
-        log("TRANS", `429 (${attempt}/4)`);
-        await new Promise((res) => setTimeout(res, 2500 * attempt));
-        continue;
-      }
-
-      if (!r.ok) {
-        log("TRANS", `HTTP ${r.status}`);
-        return null;
-      }
-
-      const d = await r.json();
-      if (!d || !d[0] || !Array.isArray(d[0])) return null;
-
-      const translated = d[0].map((x) => x[0]).join("").trim();
-      return translated || null;
-    } catch (e) {
-      log("TRANS", `Hata: ${e.message.slice(0, 60)}`);
-      await new Promise((res) => setTimeout(res, 1500 * attempt));
-    }
-  }
-  return null;
-}
-
-async function translateAll(texts) {
-  const results = new Array(texts.length);
-  let cursor = 0;
-  let done = 0;
-  let failed = 0;
-  const total = texts.length;
-
-  const worker = async () => {
-    while (true) {
-      const idx = cursor++;
-      if (idx >= total) return;
-
-      const r = await translateText(texts[idx]);
-      if (r === null || r === "") {
-        failed++;
-        results[idx] = texts[idx];
-      } else {
-        results[idx] = r;
-      }
-      done++;
-
-      if (done % 25 === 0 || done === total) {
-        log("SUB", `Progress: ${done}/${total} (hata: ${failed})`);
-      }
-
-      await new Promise((res) => setTimeout(res, CONFIG.TRANSLATE_DELAY_MS));
-    }
-  };
-
-  const workerCount = Math.min(CONFIG.TRANSLATE_CONCURRENCY, total);
-  const workers = Array(workerCount).fill(0).map(worker);
-
-  await Promise.race([
-    Promise.all(workers),
-    new Promise((res) => setTimeout(res, 180000))
-  ]);
-
-  log("SUB", `Translate bitis: ${done}/${total} (hata: ${failed})`);
-
-  if (failed > total * CONFIG.TRANSLATE_MAX_FAIL_RATIO) {
-    log("SUB", `Cok fazla hata (${failed}/${total}), kaydedilmedi`);
-    return null;
-  }
-
-  return results;
-}
-
-async function generateTranslatedSubtitle(subUrl, key, mode) {
   try {
-    log("SUB", `Indiriliyor (${mode})`);
-    const buf = await curlFetch(subUrl);
-    if (!buf || buf.length === 0) {
-      log("SUB", "Indirilemedi");
+    const r = await fetch(url, {
+      headers: {
+        "Api-Key": CONFIG.OS_KEY,
+        "Content-Type": "application/json",
+        "User-Agent": "AnimeStream v1.0"
+      },
+      signal: AbortSignal.timeout(15000)
+    });
+
+    if (r.status === 429) {
+      log("OS", `Rate limit`);
+      return null;
+    }
+    if (!r.ok) {
+      log("OS", `HTTP ${r.status}`);
       return null;
     }
 
-    const vttRaw = buf.toString("utf8");
-    const cues = parseVtt(vttRaw);
+    const d = await r.json();
+    const data = (d && d.data) || [];
+    log("OS", `${data.length} sonuc`);
 
-    if (cues.length === 0) {
-      log("SUB", "Cue yok");
-      return null;
-    }
+    if (data.length === 0) return null;
 
-    log("SUB", `${cues.length} satir cevrilecek`);
-    const t0 = Date.now();
+    // Türkçe + bölüm numarası uyanları filtrele
+    const filtered = data.filter((s) => {
+      const a = s.attributes;
+      if (a.language !== "tr") return false;
+      if (episode && a.feature_details && a.feature_details.episode_number) {
+        return String(a.feature_details.episode_number) === String(episode);
+      }
+      return true;
+    });
 
-    const translated = await translateAll(cues.map((c) => c.text));
-    if (!translated) {
-      log("SUB", "Ceviri basarisiz");
-      return null;
-    }
+    const results = filtered.length > 0 ? filtered : data;
 
-    cues.forEach((c, i) => { c.text = translated[i] || c.text; });
+    // En yüksek indirmeye sahip olanı seç
+    results.sort((a, b) => (b.attributes.download_count || 0) - (a.attributes.download_count || 0));
 
-    const finalVtt = buildVtt(cues);
-    const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
+    const best = results[0];
+    const fileId = best.attributes.files && best.attributes.files[0] ? best.attributes.files[0].file_id : null;
 
-    log("SUB", `Ceviri tamam ${elapsed}s`);
-    subtitleCache.set(key, finalVtt);
-    setTimeout(() => subtitleCache.delete(key), CONFIG.SUB_CACHE_TTL);
+    if (!fileId) return null;
 
-    return finalVtt;
+    const out = { fileId, release: best.attributes.release || "Bilinmeyen" };
+    osSearchCache.set(cacheKey, out);
+    setTimeout(() => osSearchCache.delete(cacheKey), CONFIG.SUB_CACHE_TTL);
+    return out;
   } catch (e) {
-    log("SUB", `Hata: ${e.message.slice(0, 100)}`);
+    log("OS", `Hata: ${e.message.slice(0, 80)}`);
     return null;
   }
+}
+
+async function downloadOpenSubtitles(fileId) {
+  try {
+    const r = await fetch(`${CONFIG.OS_ENDPOINT}/download`, {
+      method: "POST",
+      headers: {
+        "Api-Key": CONFIG.OS_KEY,
+        "Content-Type": "application/json",
+        "User-Agent": "AnimeStream v1.0",
+        "Accept": "application/json"
+      },
+      body: JSON.stringify({ file_id: fileId }),
+      signal: AbortSignal.timeout(15000)
+    });
+
+    if (!r.ok) {
+      log("OS", `Indirme HTTP ${r.status}`);
+      return null;
+    }
+
+    const d = await r.json();
+    if (!d.link) return null;
+
+    log("OS", `Indirme linki alindi`);
+    const buf = await curlFetch(d.link);
+    if (!buf || buf.length === 0) return null;
+
+    return buf.toString("utf8");
+  } catch (e) {
+    log("OS", `Indirme hata: ${e.message.slice(0, 80)}`);
+    return null;
+  }
+}
+
+async function fetchTurkishSubtitle(animeTitle, season, episode) {
+  const cleanTitle = cleanAnimeTitle(animeTitle);
+  if (!cleanTitle) return null;
+
+  // Birden fazla arama terimi dene
+  const queries = [
+    cleanTitle,
+    cleanTitle.split(":")[0].trim(),
+    cleanTitle.split("-")[0].trim(),
+    cleanTitle.split(" ").slice(0, 2).join(" ")
+  ].filter((q, i, arr) => q && arr.indexOf(q) === i);
+
+  for (const q of queries) {
+    log("OS", `Deneme: "${q}"`);
+    const found = await searchOpenSubtitles(q, season, episode);
+    if (found) {
+      const srt = await downloadOpenSubtitles(found.fileId);
+      if (srt && srt.length > 50) {
+        const vtt = srtToVtt(srt);
+        if (vtt && vtt.length > 50) {
+          log("OS", `Basarili: ${found.release}`);
+          return vtt;
+        }
+      }
+    }
+    await new Promise((r) => setTimeout(r, 500));
+  }
+
+  return null;
 }
 
 app.get("/api/search", async (req, res) => {
@@ -482,6 +446,7 @@ app.get("/api/search", async (req, res) => {
         id: x.id,
         title: x.title.english || x.title.romaji || x.title.native,
         titleRomaji: x.title.romaji,
+        titleEnglish: x.title.english || "",
         episodes: x.episodes || 0,
         format: x.format || "TV",
         year: x.seasonYear || "",
@@ -503,7 +468,7 @@ app.get("/api/stream", async (req, res) => {
   }, CONFIG.STREAM_ROUTE_TIMEOUT);
 
   try {
-    const { id, ep, mode } = req.query;
+    const { id, ep, mode, title, season } = req.query;
     if (!id || !ep) {
       clearTimeout(routeTimeout);
       return res.json({ error: "id ve ep gerekli" });
@@ -518,7 +483,7 @@ app.get("/api/stream", async (req, res) => {
       log("CACHE", key);
       return res.json({
         url: info.m3u8,
-        hasSubtitles: !!info.subtitleUrl,
+        hasSubtitles: true,
         mode: info.mode,
         cached: true
       });
@@ -539,12 +504,24 @@ app.get("/api/stream", async (req, res) => {
     streamInfoCache.set(key, { m3u8: info.m3u8, subtitleUrl: info.subtitleUrl, mode: info.mode });
     setTimeout(() => streamInfoCache.delete(key), CONFIG.CACHE_TTL);
 
-    if (info.subtitleUrl && !subtitleJobs.has(key) && !subtitleCache.has(key)) {
-      subtitleJobs.set(key, generateTranslatedSubtitle(info.subtitleUrl, key, info.mode).finally(() => subtitleJobs.delete(key)));
+    // OpenSubtitles'tan Türkçe altyazı çek
+    if (title && !subtitleJobs.has(key) && !subtitleCache.has(key)) {
+      const seasonNum = parseInt(season) || 1;
+      const episodeNum = parseInt(ep) || 1;
+      subtitleJobs.set(
+        key,
+        fetchTurkishSubtitle(title, seasonNum, episodeNum).then((vtt) => {
+          if (vtt) {
+            subtitleCache.set(key, vtt);
+            setTimeout(() => subtitleCache.delete(key), CONFIG.SUB_CACHE_TTL);
+          }
+          return vtt;
+        }).finally(() => subtitleJobs.delete(key))
+      );
     }
 
-    log("STREAM", `OK ${key} sub=${info.subtitleUrl ? "var" : "yok"}`);
-    res.json({ url: info.m3u8, hasSubtitles: !!info.subtitleUrl, mode: info.mode });
+    log("STREAM", `OK ${key}`);
+    res.json({ url: info.m3u8, hasSubtitles: true, mode: info.mode });
   } catch (e) {
     clearTimeout(routeTimeout);
     if (!res.headersSent) res.json({ error: e.message || "Hata" });
@@ -553,63 +530,50 @@ app.get("/api/stream", async (req, res) => {
 
 app.get("/api/subtitle", async (req, res) => {
   try {
-    const { id, ep, mode, lang } = req.query;
+    const { id, ep, mode, lang, title, season } = req.query;
     if (!id || !ep) return res.status(400).send("id ve ep gerekli");
 
     const videoMode = mode === "dub" ? "dub" : "sub";
     const key = `${id}_${ep}_${videoMode}`;
-    log("SUBREQ", `${key} lang=${lang}`);
-
-    if (lang === "en") {
-      const info = streamInfoCache.get(key);
-      if (!info || !info.subtitleUrl) return res.status(404).send("altyazi yok");
-      const buf = await curlFetch(info.subtitleUrl);
-      if (!buf) return res.status(500).send("indirme hatasi");
-      res.setHeader("Content-Type", "text/vtt; charset=utf-8");
-      return res.send(buf.toString("utf8"));
-    }
+    log("SUBREQ", `${key} lang=${lang} title=${title}`);
 
     if (subtitleCache.has(key)) {
-      log("SUBREQ", `${key} cache HIT (TR)`);
+      log("SUBREQ", `${key} cache HIT`);
       res.setHeader("Content-Type", "text/vtt; charset=utf-8");
       return res.send(subtitleCache.get(key));
     }
 
-    let info = streamInfoCache.get(key);
-
-    if (!info || !info.subtitleUrl) {
-      log("SUBREQ", `${key} cache bos, yeniden fetch`);
-      try {
-        const fresh = await scraperQueue.run(() => fetchStreamInfo(id, ep, videoMode));
-        if (fresh) {
-          info = fresh;
-          streamInfoCache.set(key, { m3u8: fresh.m3u8, subtitleUrl: fresh.subtitleUrl, mode: fresh.mode });
-          setTimeout(() => streamInfoCache.delete(key), CONFIG.CACHE_TTL);
-        }
-      } catch (e) {
-        log("SUBREQ", `Fetch hata: ${e.message}`);
+    // İş hâlâ devam ediyorsa bekle
+    if (subtitleJobs.has(key)) {
+      log("SUBREQ", `${key} islem devam, bekleniyor`);
+      const result = await subtitleJobs.get(key);
+      if (result) {
+        res.setHeader("Content-Type", "text/vtt; charset=utf-8");
+        return res.send(result);
       }
     }
 
-    if (!info || !info.subtitleUrl) {
-      log("SUBREQ", `${key} altyazi URL yok`);
-      return res.status(404).send("altyazi yok");
-    }
-
-    log("SUBREQ", `${key} ceviri bekleniyor`);
-    let job = subtitleJobs.get(key);
-    if (!job) {
-      job = generateTranslatedSubtitle(info.subtitleUrl, key, videoMode);
+    // İş yoksa yeniden başlat
+    if (title) {
+      const seasonNum = parseInt(season) || 1;
+      const episodeNum = parseInt(ep) || 1;
+      const job = fetchTurkishSubtitle(title, seasonNum, episodeNum).then((vtt) => {
+        if (vtt) {
+          subtitleCache.set(key, vtt);
+          setTimeout(() => subtitleCache.delete(key), CONFIG.SUB_CACHE_TTL);
+        }
+        return vtt;
+      }).finally(() => subtitleJobs.delete(key));
       subtitleJobs.set(key, job);
-      job.finally(() => subtitleJobs.delete(key));
+
+      const result = await job;
+      if (result) {
+        res.setHeader("Content-Type", "text/vtt; charset=utf-8");
+        return res.send(result);
+      }
     }
 
-    const result = await job;
-    if (!result) return res.status(500).send("ceviri basarisiz");
-
-    log("SUBREQ", `${key} ceviri OK`);
-    res.setHeader("Content-Type", "text/vtt; charset=utf-8");
-    res.send(result);
+    return res.status(404).send("altyazi yok");
   } catch (e) {
     log("SUBREQ", `Hata: ${e.message}`);
     res.status(500).send(e.message);
@@ -620,10 +584,8 @@ app.get("/api/subtitle-status", (req, res) => {
   const { id, ep, mode } = req.query;
   const videoMode = mode === "dub" ? "dub" : "sub";
   const key = `${id}_${ep}_${videoMode}`;
-  const info = streamInfoCache.get(key);
-
   res.json({
-    hasSource: !!(info && info.subtitleUrl),
+    hasSource: true,
     translating: subtitleJobs.has(key),
     ready: subtitleCache.has(key)
   });
@@ -633,51 +595,35 @@ app.get("/api/proxy", async (req, res) => {
   try {
     let url = req.query.url;
     if (!url) return res.status(400).send("url gerekli");
-
     url = url.replace(/&amp;/g, "&");
-
     const buf = await curlFetch(url);
     if (!buf || buf.length === 0) return res.status(500).send("bos");
-
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.setHeader("Access-Control-Allow-Headers", "*");
-
     const head = buf.slice(0, 20).toString();
     const isM3u8 = url.includes(".m3u8") || head.startsWith("#EXTM3U");
-
     if (isM3u8) {
       const text = buf.toString("utf8");
       const baseUrl = new URL(url);
       const lines = text.split(String.fromCharCode(10));
-
       const rewritten = lines.map((line) => {
         if (line.indexOf('URI="') !== -1) {
           return line.replace(/URI="([^"]+)"/g, (_, uri) => {
             try {
               const abs = new URL(uri, baseUrl).toString();
               return 'URI="/api/proxy?url=' + encodeURIComponent(abs) + '"';
-            } catch (e) {
-              return 'URI="' + uri + '"';
-            }
+            } catch (e) { return 'URI="' + uri + '"'; }
           });
         }
-
         if (!line || line.startsWith("#")) return line;
-
         const x = line.trim();
         if (!x) return line;
-
-        try {
-          return "/api/proxy?url=" + encodeURIComponent(new URL(x, baseUrl).toString());
-        } catch (e) {
-          return line;
-        }
+        try { return "/api/proxy?url=" + encodeURIComponent(new URL(x, baseUrl).toString()); }
+        catch (e) { return line; }
       });
-
       res.setHeader("Content-Type", "application/vnd.apple.mpegurl");
       return res.send(rewritten.join(String.fromCharCode(10)));
     }
-
     res.setHeader("Content-Type", "video/mp2t");
     res.send(buf);
   } catch (e) {
@@ -691,26 +637,23 @@ app.get("/api/debug", async (req, res) => {
   const result = await callScraperAPI(url, country);
   const m3u8 = extractM3u8(result.html);
   const sub = extractSubtitleFromHtml(result.html);
-
   res.json({
-    url,
-    country,
+    url, country,
     status: result.status,
     elapsed: result.elapsed + "s",
     htmlLength: result.html ? result.html.length : 0,
-    cloudflare: isCloudflareBlock(result.html),
-    concurrency: isConcurrencyError(result.html),
     m3u8Found: !!m3u8,
     subtitleFound: !!sub,
-    subtitleSample: sub,
     error: result.error || null
   });
 });
 
-app.get("/api/translate-test", async (req, res) => {
-  const text = req.query.text || "Hello world";
-  const result = await translateText(text);
-  res.json({ input: text, output: result });
+app.get("/api/os-test", async (req, res) => {
+  const q = req.query.q || "Re:Zero";
+  const s = req.query.s || "1";
+  const e = req.query.e || "1";
+  const found = await searchOpenSubtitles(q, s, e);
+  res.json({ query: q, season: s, episode: e, found });
 });
 
 app.get("/health", (req, res) => {
@@ -719,6 +662,7 @@ app.get("/health", (req, res) => {
     uptime: Math.round(process.uptime()),
     admin: adminDeviceId,
     apiKey: !!CONFIG.SA_KEY,
+    osKey: !!CONFIG.OS_KEY,
     streamCache: streamInfoCache.size,
     subtitleCache: subtitleCache.size,
     subtitleJobs: subtitleJobs.size,
@@ -732,54 +676,44 @@ function isAdminSocket(socket) {
 }
 
 function broadcastAdminStatus() {
-  io.emit("admin-status", {
-    adminDeviceId,
-    totalDevices: io.sockets.sockets.size
-  });
+  io.emit("admin-status", { adminDeviceId, totalDevices: io.sockets.sockets.size });
 }
 
 io.on("connection", (socket) => {
   log("SOCKET", socket.id);
-
   socket.on("join", (data) => {
     const deviceId = data && data.deviceId ? String(data.deviceId) : null;
     if (!deviceId) return socket.emit("error-msg", { message: "deviceId gerekli" });
-
     socket.data.deviceId = deviceId;
-
     if (!adminDeviceId) {
       adminDeviceId = deviceId;
       saveAdmin();
       log("ADMIN", `Yeni: ${deviceId}`);
     }
-
     const isAdmin = deviceId === adminDeviceId;
     socket.emit("you-are", { isAdmin, deviceId, adminDeviceId });
     broadcastAdminStatus();
-
     if (currentVideo) {
       socket.emit("video-load", currentVideo);
       socket.emit("video-state", currentState);
     }
-
     log("JOIN", `${isAdmin ? "ADMIN" : "IZLEYICI"} ${deviceId}`);
   });
 
   socket.on("video-load", (data) => {
     if (!isAdminSocket(socket)) return;
     if (!data || !data.url) return;
-
     currentVideo = {
       url: data.url,
       title: data.title || "Video",
       animeId: data.animeId || null,
       episode: data.episode || 1,
+      season: data.season || 1,
       mode: data.mode || "sub",
       hasSubtitles: !!data.hasSubtitles,
       startedAt: Date.now()
     };
     currentState = { action: "play", currentTime: 0, at: Date.now() };
-
     socket.broadcast.emit("video-load", currentVideo);
     log("LOAD", currentVideo.title);
   });
@@ -787,12 +721,7 @@ io.on("connection", (socket) => {
   socket.on("video-control", (data) => {
     if (!isAdminSocket(socket)) return;
     if (!data || !data.action) return;
-
-    currentState = {
-      action: data.action,
-      currentTime: data.currentTime || 0,
-      at: Date.now()
-    };
+    currentState = { action: data.action, currentTime: data.currentTime || 0, at: Date.now() };
     socket.broadcast.emit("video-control", currentState);
     log("CTRL", `${data.action} @ ${(data.currentTime || 0).toFixed(1)}s`);
   });
@@ -814,9 +743,8 @@ server.listen(CONFIG.PORT, "0.0.0.0", () => {
   console.log("===========================================");
   console.log(`Sunucu ${CONFIG.PORT} portunda`);
   console.log(`Admin: ${adminDeviceId || "(ilk girene)"}`);
-  console.log(`API: ScraperAPI`);
-  console.log(`Sub plan: ${CONFIG.PLAN_SUB.map((p) => `${p.variant}/${p.country}`).join(" > ")}`);
-  console.log(`Dub plan: ${CONFIG.PLAN_DUB.map((p) => `${p.variant}/${p.country}`).join(" > ")}`);
+  console.log(`ScraperAPI: ${CONFIG.SA_KEY ? "AKTIF" : "YOK"}`);
+  console.log(`OpenSubtitles: ${CONFIG.OS_KEY ? "AKTIF" : "YOK"}`);
   console.log("===========================================");
 });
 
@@ -824,6 +752,5 @@ process.on("SIGTERM", () => {
   io.close();
   server.close(() => process.exit(0));
 });
-
 process.on("uncaughtException", (e) => log("ERR", e.message));
 process.on("unhandledRejection", (e) => log("REJ", e && e.message ? e.message : e));
