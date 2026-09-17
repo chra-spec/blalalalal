@@ -300,8 +300,8 @@ function cleanAnimeTitle(title) {
   if (!title) return "";
   return title
     .replace(/\(TV\)|\(OVA\)|\(ONA\)|\(Movie\)/gi, "")
-    .replace(/Season\s*\d+/gi, "")
-    .replace(/:\s*-?Starting.*$/i, "")
+    .replace(/\s*[-:]?\s*Season\s*\d+.*$/i, "")
+    .replace(/\s*\d+(st|nd|rd|th)\s+Season.*$/i, "")
     .replace(/\s+/g, " ")
     .trim();
 }
@@ -312,16 +312,17 @@ async function searchOpenSubtitles(query, season, episode) {
     return osSearchCache.get(cacheKey);
   }
 
+  // ⚡ Önce episode_number İLE ara
   const params = new URLSearchParams({
     query: query,
     languages: "tr",
-    type: "episode"
+    type: "episode",
+    season_number: String(season),
+    episode_number: String(episode)
   });
-  if (season) params.append("season_number", String(season));
-  if (episode) params.append("episode_number", String(episode));
 
   const url = `${CONFIG.OS_ENDPOINT}/subtitles?${params.toString()}`;
-  log("OS", `Arama: ${query} S${season}E${episode}`);
+  log("OS", `Arama: "${query}" S${season}E${episode}`);
 
   try {
     const r = await fetch(url, {
@@ -343,38 +344,67 @@ async function searchOpenSubtitles(query, season, episode) {
     }
 
     const d = await r.json();
-    const data = (d && d.data) || [];
-    log("OS", `${data.length} sonuc`);
+    let data = (d && d.data) || [];
+    log("OS", `${data.length} ham sonuc`);
 
-    if (data.length === 0) return null;
-
-    // Türkçe + bölüm numarası uyanları filtrele
-    const filtered = data.filter((s) => {
+    // ⚡ KESİN FİLTRE: episode_number === hedef episode
+    const exact = data.filter((s) => {
       const a = s.attributes;
       if (a.language !== "tr") return false;
-      if (episode && a.feature_details && a.feature_details.episode_number) {
-        return String(a.feature_details.episode_number) === String(episode);
-      }
+      const fd = a.feature_details || {};
+      const epNum = fd.episode_number;
+      const seNum = fd.season_number;
+      if (epNum === undefined || epNum === null) return false;
+      if (String(epNum) !== String(episode)) return false;
+      if (seNum !== undefined && seNum !== null && String(seNum) !== String(season)) return false;
       return true;
     });
 
-    const results = filtered.length > 0 ? filtered : data;
+    // ⚡ Eğer kesin sonuç yoksa, gevşek filtre (sadece episode)
+    let filtered = exact;
+    if (filtered.length === 0) {
+      filtered = data.filter((s) => {
+        const a = s.attributes;
+        if (a.language !== "tr") return false;
+        const fd = a.feature_details || {};
+        if (fd.episode_number === undefined) return false;
+        return String(fd.episode_number) === String(episode);
+      });
+      log("OS", `Kesin eslesme yok, gevsek: ${filtered.length}`);
+    }
 
-    // En yüksek indirmeye sahip olanı seç
-    // ⚡ En uygun olanı seç: aynı bölüm numarası + yüksek indirme sayısı
-results.sort((a, b) => {
-  const aEp = a.attributes.feature_details && a.attributes.feature_details.episode_number;
-  const bEp = b.attributes.feature_details && b.attributes.feature_details.episode_number;
-  const aMatch = String(aEp) === String(episode) ? 1 : 0;
-  const bMatch = String(bEp) === String(episode) ? 1 : 0;
-  if (aMatch !== bMatch) return bMatch - aMatch;
-  return (b.attributes.download_count || 0) - (a.attributes.download_count || 0);
-});
+    // ⚡ Hiç yoksa, ilk 3'ü al (fallback)
+    if (filtered.length === 0) {
+      filtered = data.filter((s) => s.attributes.language === "tr").slice(0, 3);
+      log("OS", `Filtre sonuc yok, fallback: ${filtered.length}`);
+    }
 
-    const best = results[0];
+    if (filtered.length === 0) return null;
+
+    // ⚡ En iyi seçim:
+    // 1. Kesin episode+season eşleşmesi
+    // 2. Full-season release (tek dosyada tüm bölümler) DEĞİL → tek bölüm
+    // 3. En yüksek indirme sayısı
+    filtered.sort((a, b) => {
+      const aExact = exact.includes(a) ? 1 : 0;
+      const bExact = exact.includes(b) ? 1 : 0;
+      if (aExact !== bExact) return bExact - aExact;
+
+      // "Complete" / "Batch" / "Sezon" içerenleri geriye at
+      const aRelease = (a.attributes.release || "").toLowerCase();
+      const bRelease = (b.attributes.release || "").toLowerCase();
+      const isBatch = (r) => r.includes("complete") || r.includes("batch") || r.includes("season") || r.includes("1-") || r.includes("full");
+      if (isBatch(aRelease) !== isBatch(bRelease)) return isBatch(aRelease) ? 1 : -1;
+
+      return (b.attributes.download_count || 0) - (a.attributes.download_count || 0);
+    });
+
+    const best = filtered[0];
     const fileId = best.attributes.files && best.attributes.files[0] ? best.attributes.files[0].file_id : null;
 
     if (!fileId) return null;
+
+    log("OS", `Secildi: ${best.attributes.release} (S${best.attributes.feature_details?.season_number}E${best.attributes.feature_details?.episode_number})`);
 
     const out = { fileId, release: best.attributes.release || "Bilinmeyen" };
     osSearchCache.set(cacheKey, out);
