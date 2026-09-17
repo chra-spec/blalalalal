@@ -188,6 +188,19 @@ function extractM3u8(html) {
   return filtered.reduce((a, b) => a.length > b.length ? a : b);
 }
 
+function extractSubtitleFromHtml(html) {
+  if (!html) return null;
+
+  const regex = /https?:\/\/[^"'\s\\<>]+\.(?:vtt|srt)[^"'\s\\<>]*/g;
+  const matches = html.match(regex) || [];
+
+  if (matches.length === 0) return null;
+
+  const decoded = decodeHtmlEntities(matches[0]);
+  log("SUB", `HTML altyazi bulundu`);
+  return decoded;
+}
+
 function isCloudflareBlock(html) {
   if (!html) return false;
   return html.includes("Attention Required") ||
@@ -205,7 +218,7 @@ function isConcurrencyError(html) {
          html.includes("credits");
 }
 
-async function fetchM3u8WithPlans(animeId, episode) {
+async function fetchStreamInfo(animeId, episode) {
   const baseUrl = `https://vidnest.fun/anime/${animeId}/${episode}`;
 
   for (let i = 0; i < CONFIG.PLAN.length; i++) {
@@ -224,11 +237,9 @@ async function fetchM3u8WithPlans(animeId, episode) {
       if (retry.html && !isConcurrencyError(retry.html)) {
         const m3u8 = extractM3u8(retry.html);
         if (m3u8) {
-          log("OK", `Plan#${i + 1} retry`);
-          return {
-            m3u8: m3u8,
-            subtitleUrl: extractSubtitleFromHtml(retry.html)
-          };
+          const sub = extractSubtitleFromHtml(retry.html);
+          log("OK", `Plan#${i + 1} retry sub=${sub ? "var" : "yok"}`);
+          return { m3u8, subtitleUrl: sub };
         }
       }
       continue;
@@ -246,12 +257,9 @@ async function fetchM3u8WithPlans(animeId, episode) {
 
     const m3u8 = extractM3u8(result.html);
     if (m3u8) {
-      const subFromHtml = extractSubtitleFromHtml(result.html);
-      log("OK", `Plan#${i + 1} subHtml=${subFromHtml ? "var" : "yok"}`);
-      return {
-        m3u8: m3u8,
-        subtitleUrl: subFromHtml
-      };
+      const sub = extractSubtitleFromHtml(result.html);
+      log("OK", `Plan#${i + 1} sub=${sub ? "var" : "yok"}`);
+      return { m3u8, subtitleUrl: sub };
     }
 
     log("MISS", `Plan#${i + 1} m3u8 yok`);
@@ -277,50 +285,6 @@ function curlFetch(url) {
     });
     proc.on("error", () => resolve(null));
   });
-}
-
-async function fetchMasterContent(m3u8Url) {
-  const buf = await curlFetch(m3u8Url);
-  return buf ? buf.toString("utf8") : null;
-}
-function extractSubtitleFromHtml(html) {
-  if (!html) return null;
-  const regex = /https?:\/\/[^"'\s\\<>]+\.(?:vtt|srt)[^"'\s\\<>]*/g;
-  const matches = html.match(regex) || [];
-  if (matches.length === 0) return null;
-  const decoded = decodeHtmlEntities(matches[0]);
-  log("SUB", `HTML'den altyazi bulundu`);
-  return decoded;
-}
-function extractSubtitleUrl(masterContent, baseUrl) {
-  if (!masterContent) return null;
-
-  const regex = /#EXT-X-MEDIA:TYPE=SUBTITLES[^\n]*URI="([^"]+)"/g;
-  const matches = [...masterContent.matchAll(regex)];
-
-  if (matches.length === 0) return null;
-
-  const langRegex = /LANGUAGE="([^"]+)"/;
-  let chosen = null;
-
-  for (const m of matches) {
-    const full = m[0];
-    const uri = m[1];
-    const langMatch = full.match(langRegex);
-    const lang = langMatch ? langMatch[1].toLowerCase() : "";
-
-    if (lang.startsWith("en") || lang === "eng") {
-      chosen = uri;
-      break;
-    }
-    if (!chosen) chosen = uri;
-  }
-
-  try {
-    return new URL(chosen, new URL(baseUrl)).toString();
-  } catch (e) {
-    return chosen;
-  }
 }
 
 function parseVtt(vttText) {
@@ -393,20 +357,14 @@ async function translateAll(texts) {
   return results;
 }
 
-async function generateTranslatedSubtitle(m3u8Url, key) {
+async function generateTranslatedSubtitle(subUrl, key) {
   try {
-    const master = await fetchMasterContent(m3u8Url);
-    if (!master) return null;
-
-    const subUrl = extractSubtitleUrl(master, m3u8Url);
-    if (!subUrl) {
-      log("SUB", "Altyazi URL yok");
-      return null;
-    }
-
     log("SUB", `Indiriliyor`);
     const buf = await curlFetch(subUrl);
-    if (!buf || buf.length === 0) return null;
+    if (!buf || buf.length === 0) {
+      log("SUB", "Indirilemedi");
+      return null;
+    }
 
     const vttRaw = buf.toString("utf8");
     const cues = parseVtt(vttRaw);
@@ -425,7 +383,7 @@ async function generateTranslatedSubtitle(m3u8Url, key) {
     const finalVtt = buildVtt(cues);
     const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
 
-    log("SUB", `Ceviri ${elapsed}s`);
+    log("SUB", `Ceviri tamam ${elapsed}s`);
     subtitleCache.set(key, finalVtt);
     setTimeout(() => subtitleCache.delete(key), CONFIG.SUB_CACHE_TTL);
 
@@ -498,37 +456,27 @@ app.get("/api/stream", async (req, res) => {
       });
     }
 
-log("STREAM", key);
-const result = await scraperQueue.run(() => fetchM3u8WithPlans(id, ep));
+    log("STREAM", key);
+    const info = await scraperQueue.run(() => fetchStreamInfo(id, ep));
 
-clearTimeout(routeTimeout);
+    clearTimeout(routeTimeout);
 
-if (!result || !result.m3u8) {
-  return res.json({ error: "Video bulunamadi. Farkli bolum deneyin." });
-}
-
-const m3u8 = result.m3u8;
-let subtitleUrl = result.subtitleUrl;
-
-m3u8Cache.set(key, m3u8);
-setTimeout(() => m3u8Cache.delete(key), CONFIG.CACHE_TTL);
-
-if (!subtitleUrl) {
-  try {
-    const master = await fetchMasterContent(m3u8);
-    subtitleUrl = extractSubtitleUrl(master, m3u8);
-  } catch (e) {}
-}
-
-    streamInfoCache.set(key, { m3u8, subtitleUrl });
-    setTimeout(() => streamInfoCache.delete(key), CONFIG.CACHE_TTL);
-
-    if (subtitleUrl && !subtitleJobs.has(key) && !subtitleCache.has(key)) {
-      subtitleJobs.set(key, generateTranslatedSubtitle(m3u8, key).finally(() => subtitleJobs.delete(key)));
+    if (!info || !info.m3u8) {
+      return res.json({ error: "Video bulunamadi. Farkli bolum deneyin." });
     }
 
-    log("STREAM", `OK ${key} sub=${subtitleUrl ? "var" : "yok"}`);
-    res.json({ url: m3u8, hasSubtitles: !!subtitleUrl });
+    m3u8Cache.set(key, info.m3u8);
+    setTimeout(() => m3u8Cache.delete(key), CONFIG.CACHE_TTL);
+
+    streamInfoCache.set(key, { m3u8: info.m3u8, subtitleUrl: info.subtitleUrl });
+    setTimeout(() => streamInfoCache.delete(key), CONFIG.CACHE_TTL);
+
+    if (info.subtitleUrl && !subtitleJobs.has(key) && !subtitleCache.has(key)) {
+      subtitleJobs.set(key, generateTranslatedSubtitle(info.subtitleUrl, key).finally(() => subtitleJobs.delete(key)));
+    }
+
+    log("STREAM", `OK ${key} sub=${info.subtitleUrl ? "var" : "yok"}`);
+    res.json({ url: info.m3u8, hasSubtitles: !!info.subtitleUrl });
   } catch (e) {
     clearTimeout(routeTimeout);
     if (!res.headersSent) res.json({ error: e.message || "Hata" });
@@ -561,7 +509,7 @@ app.get("/api/subtitle", async (req, res) => {
 
     let job = subtitleJobs.get(key);
     if (!job) {
-      job = generateTranslatedSubtitle(info.m3u8, key);
+      job = generateTranslatedSubtitle(info.subtitleUrl, key);
       subtitleJobs.set(key, job);
       job.finally(() => subtitleJobs.delete(key));
     }
@@ -649,6 +597,7 @@ app.get("/api/debug", async (req, res) => {
   const country = req.query.country || "us";
   const result = await callScraperAPI(url, country);
   const m3u8 = extractM3u8(result.html);
+  const sub = extractSubtitleFromHtml(result.html);
 
   res.json({
     url,
@@ -659,26 +608,13 @@ app.get("/api/debug", async (req, res) => {
     cloudflare: isCloudflareBlock(result.html),
     concurrency: isConcurrencyError(result.html),
     m3u8Found: !!m3u8,
-    m3u8Sample: m3u8,
+    subtitleFound: !!sub,
+    subtitleSample: sub,
     error: result.error || null,
-    plan: CONFIG.PLAN,
-    htmlSample: result.html ? result.html.substring(0, 3000) : null,
-    searchM3u8: result.html ? (result.html.match(/m3u8/g) || []).length : 0,
-    searchSource: result.html ? (result.html.match(/source/gi) || []).length : 0,
-    searchStream: result.html ? (result.html.match(/stream/gi) || []).length : 0,
-    searchVideo: result.html ? (result.html.match(/video/gi) || []).length : 0,
-        searchIframe: result.html ? (result.html.match(/iframe/gi) || []).length : 0,
-    subtitleInHtml: result.html ? [
-      ...result.html.matchAll(/https?:\/\/[^"'\s\\<>]+\.(?:vtt|srt)[^"'\s\\<>]*/g)
-    ].map((m) => m[0]).slice(0, 5) : [],
-    subtitleKeywords: result.html ? [
-      ...result.html.matchAll(/(?:subtitle|sub_url|subUrl|track)["']?\s*[:=]\s*["']([^"']{10,200})["']/gi)
-    ].map((m) => m[1]).slice(0, 5) : [],
-    m3u8All: result.html ? [
-      ...result.html.matchAll(/https?:\/\/[^"'\s\\<>]+\.m3u8[^"'\s\\<>]*/g)
-    ].map((m) => m[0]).slice(0, 5) : []
+    plan: CONFIG.PLAN
   });
 });
+
 app.get("/health", (req, res) => {
   res.json({
     status: "ok",
