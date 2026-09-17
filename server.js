@@ -642,10 +642,15 @@ app.get("/api/debug", async (req, res) => {
     m3u8Found: !!m3u8,
     m3u8Sample: m3u8,
     error: result.error || null,
-    plan: CONFIG.PLAN
+    plan: CONFIG.PLAN,
+    htmlSample: result.html ? result.html.substring(0, 3000) : null,
+    searchM3u8: result.html ? (result.html.match(/m3u8/g) || []).length : 0,
+    searchSource: result.html ? (result.html.match(/source/gi) || []).length : 0,
+    searchStream: result.html ? (result.html.match(/stream/gi) || []).length : 0,
+    searchVideo: result.html ? (result.html.match(/video/gi) || []).length : 0,
+    searchIframe: result.html ? (result.html.match(/iframe/gi) || []).length : 0
   });
 });
-
 app.get("/health", (req, res) => {
   res.json({
     status: "ok",
