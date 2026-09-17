@@ -261,7 +261,12 @@ function loadVideoSource(rawUrl) {
   const proxyUrl = "/api/proxy?url=" + encodeURIComponent(rawUrl);
 
   if (Hls.isSupported()) {
-    hls = new Hls({ enableWorker: true, lowLatencyMode: false, maxBufferLength: 30 });
+hls = new Hls({
+  enableWorker: true,
+  lowLatencyMode: false,
+  maxBufferLength: 30,
+  renderTextTracksNatively: false
+});
     hls.loadSource(proxyUrl);
     hls.attachMedia(video);
     hls.on(Hls.Events.MANIFEST_PARSED, () => {
