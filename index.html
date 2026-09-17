@@ -9,91 +9,174 @@
 <style>
   *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
   body{background:#0a0a14;color:#fff;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;min-height:100vh;overflow-x:hidden}
-  .header{position:sticky;top:0;z-index:100;padding:12px 16px;background:rgba(26,26,46,0.95);backdrop-filter:blur(10px);display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #222}
-  .header h1{font-size:15px;color:#667eea;font-weight:700;display:flex;align-items:center;gap:8px}
-  .badge{padding:5px 12px;border-radius:12px;font-size:11px;font-weight:700;display:flex;align-items:center;gap:5px}
+
+  /* HEADER */
+  .header{position:sticky;top:0;z-index:100;padding:10px 14px;background:rgba(26,26,46,0.96);backdrop-filter:blur(10px);display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #222;gap:8px}
+  .header h1{font-size:14px;color:#667eea;font-weight:700;display:flex;align-items:center;gap:7px;flex-shrink:0}
+  .badge{padding:5px 11px;border-radius:12px;font-size:10px;font-weight:700;display:flex;align-items:center;gap:5px;flex-shrink:0}
   .badge.admin{background:#f39c12;color:#000;box-shadow:0 0 12px rgba(243,156,18,0.5)}
   .badge.viewer{background:#333;color:#ccc}
   .badge.connecting{background:#555;color:#fff;animation:pulse 1.5s infinite}
   @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.5}}
 
+  /* VIDEO */
   .video-wrap{position:relative;width:100%;background:#000;aspect-ratio:16/9;max-height:55vh}
   .video-wrap video{width:100%;height:100%;display:block;background:#000}
   .video-wrap video::cue{background:rgba(0,0,0,0.75);color:#fff;font-size:20px;font-weight:600}
-  .video-overlay{position:absolute;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.88);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;color:#ccc;font-size:14px;text-align:center;padding:24px;z-index:5}
+  .video-overlay{position:absolute;inset:0;background:rgba(0,0,0,0.88);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;color:#ccc;font-size:14px;text-align:center;padding:24px;z-index:5}
   .video-overlay.hidden{display:none}
   .video-overlay .msg{line-height:1.5;max-width:400px}
   .spinner{width:36px;height:36px;border:3px solid rgba(102,126,234,0.2);border-top-color:#667eea;border-radius:50%;animation:spin 0.8s linear infinite}
   @keyframes spin{to{transform:rotate(360deg)}}
 
-  .status-bar{padding:9px 14px;background:#12121f;font-size:12px;color:#888;display:flex;justify-content:space-between;border-bottom:1px solid #222;align-items:center;gap:8px;flex-wrap:wrap}
-  .status-bar .live{color:#e74c3c;font-weight:700;display:flex;align-items:center;gap:6px}
-  .status-bar .live::before{content:"";width:7px;height:7px;background:#e74c3c;border-radius:50%;animation:pulse 1.5s infinite}
-  .sub-status{display:flex;align-items:center;gap:6px;font-size:11px;padding:4px 10px;border-radius:10px;background:#222}
+  /* STATUS BAR */
+  .status-bar{padding:8px 14px;background:#12121f;font-size:11px;color:#888;display:flex;justify-content:space-between;border-bottom:1px solid #222;align-items:center;gap:8px;flex-wrap:wrap}
+  .status-bar .left{display:flex;align-items:center;gap:8px;min-width:0;flex:1}
+  .status-bar .left .txt{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:180px}
+  .status-bar .right{display:flex;gap:6px;align-items:center;flex-shrink:0}
+  .live{color:#e74c3c;font-weight:700;display:flex;align-items:center;gap:5px;font-size:11px}
+  .live::before{content:"";width:7px;height:7px;background:#e74c3c;border-radius:50%;animation:pulse 1.5s infinite}
+  .sub-status{display:flex;align-items:center;gap:5px;font-size:10px;padding:3px 9px;border-radius:10px;background:#222}
   .sub-status.ok{background:rgba(39,174,96,0.2);color:#27ae60}
   .sub-status.loading{background:rgba(243,156,18,0.2);color:#f39c12}
   .sub-status.none{background:#222;color:#666}
+  .sub-status svg{width:12px;height:12px}
 
-  .admin-panel{display:none;padding:14px;max-width:1200px;margin:0 auto}
+  /* ADMIN PANEL */
+  .admin-wrap{position:relative;max-width:1200px;margin:0 auto;padding:14px}
+  .admin-panel{display:none;padding:0}
   .admin-panel.show{display:block}
+  .admin-panel.minimized{display:none !important}
+
   .section-title{font-size:12px;color:#667eea;font-weight:700;margin-bottom:10px;text-transform:uppercase;letter-spacing:0.5px;display:flex;align-items:center;gap:6px}
+  .section-title svg{width:14px;height:14px}
 
-  .search-box{display:flex;gap:8px;margin-bottom:14px}
-  .search-box input{flex:1;padding:12px 16px;border:2px solid #333;border-radius:12px;background:#1a1a2e;color:#fff;font-size:15px;outline:none;transition:border-color 0.2s}
+  .search-box{display:flex;gap:8px;margin-bottom:12px}
+  .search-box input{flex:1;padding:11px 14px;border:2px solid #333;border-radius:12px;background:#1a1a2e;color:#fff;font-size:14px;outline:none;transition:border-color 0.2s;min-width:0}
   .search-box input:focus{border-color:#667eea}
-  .search-box button{padding:12px 22px;background:#667eea;color:#fff;border:none;border-radius:12px;font-weight:700;font-size:14px;cursor:pointer;display:flex;align-items:center;gap:6px}
+  .search-box button{padding:11px 18px;background:#667eea;color:#fff;border:none;border-radius:12px;font-weight:700;font-size:13px;cursor:pointer;display:flex;align-items:center;gap:6px;flex-shrink:0}
   .search-box button:disabled{background:#333;cursor:not-allowed}
+  .search-box button svg{width:16px;height:16px}
 
+  /* SEZON GRUPLARI */
   .results{display:grid;grid-template-columns:repeat(auto-fill,minmax(88px,1fr));gap:8px;margin-bottom:14px}
-  .result{background:#1a1a2e;border-radius:8px;overflow:hidden;cursor:pointer;transition:transform 0.15s,border-color 0.15s;border:2px solid transparent}
+  .result{background:#1a1a2e;border-radius:8px;overflow:hidden;cursor:pointer;transition:transform 0.15s,border-color 0.15s;border:2px solid transparent;position:relative}
   .result:hover{transform:translateY(-2px);border-color:#667eea}
   .result.selected{border-color:#27ae60}
   .result.disabled{opacity:0.5;cursor:wait;pointer-events:none}
   .result img{width:100%;aspect-ratio:2/3;object-fit:cover;display:block;background:#333}
   .result-title{padding:5px;font-size:10px;line-height:1.25;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
-  .result-meta{padding:0 5px 5px;font-size:9px;color:#666}
+  .result-meta{padding:0 5px 5px;font-size:9px;color:#666;display:flex;justify-content:space-between}
+  .season-count{position:absolute;top:4px;right:4px;background:#667eea;color:#fff;font-size:9px;font-weight:700;padding:2px 6px;border-radius:8px;box-shadow:0 1px 4px rgba(0,0,0,0.5)}
+  .result.selected .season-count{background:#27ae60}
 
-  .controls{padding:14px;background:#1a1a2e;border-radius:12px;margin-bottom:14px;display:flex;flex-direction:column;gap:12px}
-  .controls-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  /* SEZON LİSTESİ MODAL */
+  .season-modal{position:fixed;inset:0;background:rgba(0,0,0,0.85);display:none;align-items:center;justify-content:center;z-index:500;padding:20px}
+  .season-modal.active{display:flex}
+  .season-modal-content{background:#1a1a2e;border-radius:14px;max-width:420px;width:100%;max-height:80vh;overflow-y:auto;padding:18px;border:1px solid #333}
+  .season-modal-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;gap:10px}
+  .season-modal-header h3{font-size:15px;color:#667eea;font-weight:700;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .season-modal-close{background:#333;border:none;color:#fff;width:30px;height:30px;border-radius:50%;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+  .season-modal-close svg{width:14px;height:14px}
+  .season-list{display:flex;flex-direction:column;gap:8px}
+  .season-item{background:#252540;padding:12px;border-radius:10px;cursor:pointer;display:flex;align-items:center;gap:10px;transition:background 0.15s;border:1px solid transparent}
+  .season-item:hover{background:#2f2f50;border-color:#667eea}
+  .season-item.selected{background:#1e3a5f;border-color:#27ae60}
+  .season-item svg{width:18px;height:18px;color:#667eea;flex-shrink:0}
+  .season-item .info{flex:1;min-width:0}
+  .season-item .info .name{font-size:13px;font-weight:600;color:#fff;margin-bottom:2px}
+  .season-item .info .meta{font-size:11px;color:#888}
+
+  /* CONTROLS */
+  .controls{padding:12px;background:#1a1a2e;border-radius:12px;margin-bottom:12px;display:flex;flex-direction:column;gap:10px}
+  .controls-row{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
   .controls-row.center{justify-content:center}
 
-  .ctrl-btn{padding:10px 16px;background:#0a0a14;color:#fff;border:1px solid #333;border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:all 0.15s}
+  .ctrl-btn{padding:9px 14px;background:#0a0a14;color:#fff;border:1px solid #333;border-radius:10px;font-size:12px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:5px;transition:all 0.15s;flex-shrink:0}
   .ctrl-btn:hover{background:#252540;border-color:#667eea}
   .ctrl-btn:disabled{opacity:0.35;cursor:not-allowed}
   .ctrl-btn.primary{background:#667eea;border-color:#667eea}
   .ctrl-btn.primary:hover{background:#5568d3}
-  .ctrl-btn svg{width:18px;height:18px}
+  .ctrl-btn.success{background:#27ae60;border-color:#27ae60}
+  .ctrl-btn.success:hover{background:#229954}
+  .ctrl-btn svg{width:16px;height:16px}
+  .ctrl-btn.icon-only{padding:9px 11px}
 
-  .ep-display{display:inline-flex;align-items:center;gap:10px;padding:8px 18px;background:#0a0a14;border-radius:10px;border:1px solid #333}
-  .ep-display .label{font-size:11px;color:#888;text-transform:uppercase}
-  .ep-display .value{font-size:16px;font-weight:700;color:#667eea;min-width:20px;text-align:center}
+  .ep-display{display:inline-flex;align-items:center;gap:8px;padding:7px 14px;background:#0a0a14;border-radius:10px;border:1px solid #333}
+  .ep-display .label{font-size:10px;color:#888;text-transform:uppercase}
+  .ep-display .value{font-size:15px;font-weight:700;color:#667eea;min-width:20px;text-align:center}
 
-  .season-display{display:inline-flex;align-items:center;gap:8px;padding:9px 16px;background:#0a0a14;border-radius:10px;border:1px solid #333;font-size:13px;color:#ccc}
+  .ep-search{display:inline-flex;align-items:center;gap:5px;padding:5px 10px;background:#0a0a14;border-radius:10px;border:1px solid #333}
+  .ep-search input{width:50px;padding:4px 6px;background:transparent;color:#fff;border:none;font-size:13px;font-weight:600;text-align:center;outline:none}
+  .ep-search input::placeholder{color:#555}
+  .ep-search button{background:#667eea;border:none;color:#fff;width:24px;height:24px;border-radius:6px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+  .ep-search button svg{width:12px;height:12px}
 
-  .mode-select{padding:10px 16px;background:#0a0a14;color:#fff;border:1px solid #333;border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;outline:none}
+  .season-display{display:inline-flex;align-items:center;gap:6px;padding:8px 14px;background:#0a0a14;border-radius:10px;border:1px solid #333;font-size:12px;color:#ccc}
+  .season-display svg{width:14px;height:14px}
+  .season-display .value{color:#667eea;font-weight:700}
 
-  .selected-name{flex:1;min-width:0;font-size:12px;color:#888;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:right}
+  .mode-select{padding:8px 12px;background:#0a0a14;color:#fff;border:1px solid #333;border-radius:10px;font-size:12px;font-weight:600;cursor:pointer;outline:none}
 
-  .sub-badge{padding:4px 10px;border-radius:10px;font-size:10px;font-weight:600}
+  .selected-name{flex:1;min-width:0;font-size:11px;color:#888;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:right}
+
+  .sub-badge{padding:3px 9px;border-radius:10px;font-size:10px;font-weight:600}
   .sub-badge.yes{background:rgba(39,174,96,0.2);color:#27ae60}
   .sub-badge.no{background:#333;color:#888}
 
+  /* PREFETCH TOGGLE */
+  .prefetch-row{display:flex;align-items:center;justify-content:space-between;padding:10px 12px;background:#0a0a14;border-radius:10px;border:1px solid #333;gap:10px}
+  .prefetch-info{display:flex;align-items:center;gap:8px;flex:1;min-width:0}
+  .prefetch-info svg{width:16px;height:16px;flex-shrink:0;color:#667eea}
+  .prefetch-info .txt{font-size:11px;color:#888;line-height:1.35}
+  .prefetch-info .txt strong{color:#fff;font-weight:600;display:block;font-size:12px}
+  .toggle{position:relative;width:44px;height:24px;background:#333;border-radius:12px;cursor:pointer;transition:background 0.2s;flex-shrink:0}
+  .toggle.on{background:#27ae60}
+  .toggle::after{content:"";position:absolute;top:2px;left:2px;width:20px;height:20px;background:#fff;border-radius:50%;transition:transform 0.2s}
+  .toggle.on::after{transform:translateX(20px)}
+  .prefetch-status{font-size:10px;color:#666;margin-top:6px;min-height:14px}
+  .prefetch-status.active{color:#f39c12}
+
+  /* MINIMIZE BUTONU */
+  .minimize-btn{position:fixed;bottom:16px;right:16px;width:52px;height:52px;border-radius:50%;background:#667eea;border:none;color:#fff;cursor:pointer;display:none;align-items:center;justify-content:center;box-shadow:0 4px 16px rgba(102,126,234,0.5);z-index:400;transition:transform 0.15s}
+  .minimize-btn:hover{transform:scale(1.06)}
+  .minimize-btn:active{transform:scale(0.95)}
+  .minimize-btn.show{display:flex}
+  .minimize-btn svg{width:22px;height:22px}
+
+  .minimize-backdrop{position:fixed;inset:0;background:rgba(0,0,0,0.5);display:none;z-index:399}
+  .minimize-backdrop.show{display:block}
+
+  /* YENİDEN AÇMA POPUP */
+  .minimize-popup{position:fixed;bottom:80px;right:16px;background:#1a1a2e;border-radius:12px;border:1px solid #333;padding:8px;display:none;z-index:401;min-width:180px;box-shadow:0 6px 24px rgba(0,0,0,0.6)}
+  .minimize-popup.show{display:block;animation:popupIn 0.15s ease}
+  @keyframes popupIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+  .minimize-popup-item{padding:10px 12px;display:flex;align-items:center;gap:10px;font-size:13px;color:#fff;cursor:pointer;border-radius:8px;transition:background 0.15s}
+  .minimize-popup-item:hover{background:#252540}
+  .minimize-popup-item svg{width:16px;height:16px;color:#667eea}
+
+  /* VIEWER */
   .viewer-info{padding:20px;text-align:center;color:#666;font-size:13px;max-width:600px;margin:0 auto}
   .viewer-info svg{width:52px;height:52px;margin-bottom:14px;opacity:0.4;stroke:#667eea}
 
+  /* TOAST */
   .toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#2d2d44;padding:11px 18px;border-radius:10px;font-size:13px;z-index:1000;animation:slideUp 0.3s;box-shadow:0 4px 20px rgba(0,0,0,0.5);max-width:90%;display:flex;align-items:center;gap:8px}
   @keyframes slideUp{from{opacity:0;transform:translate(-50%,20px)}to{opacity:1;transform:translate(-50%,0)}}
+  .toast svg{width:16px;height:16px;flex-shrink:0}
+  .toast.success svg{color:#27ae60}
+  .toast.error svg{color:#e74c3c}
+  .toast.info svg{color:#667eea}
 </style>
 </head>
 <body>
 
 <div class="header">
   <h1>
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><polygon points="10 9 15 11.5 10 14 10 9" fill="currentColor"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><polygon points="10 9 15 11.5 10 14 10 9" fill="currentColor" stroke="none"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
     Anime İzle
   </h1>
   <span id="badge" class="badge connecting">
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
     Bağlanıyor
   </span>
 </div>
@@ -107,78 +190,128 @@
 </div>
 
 <div class="status-bar">
-  <span id="statusText">Bekleniyor</span>
-  <div style="display:flex;gap:6px;align-items:center">
+  <div class="left">
+    <span id="statusText" class="txt">Bekleniyor</span>
+  </div>
+  <div class="right">
     <span id="subStatus" class="sub-status none">
-      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="14" rx="2"/><line x1="7" y1="12" x2="10" y2="12"/><line x1="13" y1="12" x2="17" y2="12"/><line x1="7" y1="15" x2="10" y2="15"/><line x1="13" y1="15" x2="17" y2="15"/></svg>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="14" rx="2"/><line x1="7" y1="12" x2="10" y2="12"/><line x1="13" y1="12" x2="17" y2="12"/><line x1="7" y1="15" x2="10" y2="15"/><line x1="13" y1="15" x2="17" y2="15"/></svg>
       Altyazı yok
     </span>
     <span id="liveBadge" class="live" style="display:none">CANLI</span>
   </div>
 </div>
 
-<div id="adminPanel" class="admin-panel">
-  <div class="section-title">
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-    Anime Ara
-  </div>
-  <div class="search-box">
-    <input type="text" id="searchInput" placeholder="Anime adı yaz..." autocomplete="off">
-    <button id="searchBtn" onclick="doSearch()">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-      Ara
-    </button>
-  </div>
-  <div id="results" class="results"></div>
-
-  <div class="section-title">
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/><line x1="9" y1="4" x2="9" y2="20"/><line x1="15" y1="4" x2="15" y2="20"/></svg>
-    Video Kontrolü
-  </div>
-
-  <div class="controls">
-    <div class="controls-row center">
-      <button class="ctrl-btn" id="prevEpBtn" onclick="prevEpisode()" title="Önceki Bölüm">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="15 18 9 12 15 6"/></svg>
-      </button>
-      <div class="ep-display">
-        <span class="label">Bölüm</span>
-        <span class="value" id="epDisplay">1</span>
-      </div>
-      <button class="ctrl-btn" id="nextEpBtn" onclick="nextEpisode()" title="Sonraki Bölüm">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="9 18 15 12 9 6"/></svg>
+<div class="admin-wrap" id="adminWrap">
+  <div id="adminPanel" class="admin-panel">
+    <div class="section-title">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      Anime Ara
+    </div>
+    <div class="search-box">
+      <input type="text" id="searchInput" placeholder="Anime adı yaz..." autocomplete="off">
+      <button id="searchBtn" onclick="doSearch()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        Ara
       </button>
     </div>
+    <div id="results" class="results"></div>
 
-    <div class="controls-row center">
-      <div class="season-display">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>
-        Sezon <span id="seasonDisplay" style="color:#667eea;font-weight:700">1</span>
+    <div class="section-title">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/><line x1="9" y1="4" x2="9" y2="20"/><line x1="15" y1="4" x2="15" y2="20"/></svg>
+      Video Kontrolü
+    </div>
+
+    <div class="controls">
+      <div class="controls-row center">
+        <button class="ctrl-btn icon-only" id="prevEpBtn" onclick="prevEpisode()" title="Önceki Bölüm">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="15 18 9 12 15 6"/></svg>
+        </button>
+        <div class="ep-display">
+          <span class="label">Bölüm</span>
+          <span class="value" id="epDisplay">1</span>
+        </div>
+        <div class="ep-search">
+          <input type="number" id="epSearchInput" placeholder="Git" min="1" max="9999">
+          <button onclick="jumpToEpisode()" title="Bölüme Git">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="9 18 15 12 9 6"/></svg>
+          </button>
+        </div>
+        <button class="ctrl-btn icon-only" id="nextEpBtn" onclick="nextEpisode()" title="Sonraki Bölüm">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="9 18 15 12 9 6"/></svg>
+        </button>
       </div>
-      <select class="mode-select" id="modeSelect" onchange="onModeChange()">
-        <option value="sub">Altyazılı</option>
-        <option value="dub">Dublaj</option>
-      </select>
-      <span class="sub-badge no" id="subBadge">Altyazı yok</span>
-    </div>
 
-    <div class="controls-row">
-      <span class="selected-name" id="selectedName">Anime seçilmedi</span>
+      <div class="controls-row center">
+        <div class="season-display">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>
+          Sezon <span class="value" id="seasonDisplay">1</span>
+        </div>
+        <select class="mode-select" id="modeSelect" onchange="onModeChange()">
+          <option value="sub">Altyazılı</option>
+          <option value="dub">Dublaj</option>
+        </select>
+        <span class="sub-badge no" id="subBadge">Altyazı yok</span>
+      </div>
+
+      <div class="prefetch-row">
+        <div class="prefetch-info">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="13 17 18 12 13 7"/><polyline points="6 17 11 12 6 7"/></svg>
+          <div class="txt">
+            <strong>Sonraki bölümleri önceden hazırla</strong>
+            <span>Açıkken sonraki bölümlerin altyazıları arka planda hazırlanır</span>
+          </div>
+        </div>
+        <div class="toggle" id="prefetchToggle" onclick="togglePrefetch()"></div>
+      </div>
+      <div class="prefetch-status" id="prefetchStatus"></div>
+
+      <div class="controls-row">
+        <span class="selected-name" id="selectedName">Anime seçilmedi</span>
+      </div>
     </div>
+  </div>
+
+  <div id="viewerInfo" class="viewer-info" style="display:none">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><polygon points="10 9 15 11.5 10 14 10 9"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+    <div>Yönetici bir video başlattığında otomatik olarak görünecek.</div>
+    <div style="margin-top:8px;font-size:11px;color:#444">Türkçe altyazı otomatik hazırlanır.</div>
   </div>
 </div>
 
-<div id="viewerInfo" class="viewer-info" style="display:none">
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><polygon points="10 9 15 11.5 10 14 10 9"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
-  <div>Yönetici bir video başlattığında otomatik olarak görünecek.</div>
-  <div style="margin-top:8px;font-size:11px;color:#444">Türkçe altyazı otomatik hazırlanır.</div>
+<button class="minimize-btn" id="minimizeBtn" onclick="toggleMinimizePopup()" title="Anime Paneli">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+</button>
+<div class="minimize-backdrop" id="minimizeBackdrop" onclick="closeMinimizePopup()"></div>
+<div class="minimize-popup" id="minimizePopup">
+  <div class="minimize-popup-item" onclick="openFromMinimize()">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/><line x1="9" y1="4" x2="9" y2="20"/></svg>
+    Paneli Aç
+  </div>
+  <div class="minimize-popup-item" onclick="minimizePanelCompletely()">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+    Gizle
+  </div>
+</div>
+
+<!-- SEZON MODAL -->
+<div class="season-modal" id="seasonModal">
+  <div class="season-modal-content">
+    <div class="season-modal-header">
+      <h3 id="seasonModalTitle">Sezon Seç</h3>
+      <button class="season-modal-close" onclick="closeSeasonModal()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="season-list" id="seasonList"></div>
+  </div>
 </div>
 
 <script>
 const deviceId = (function () {
   let id = localStorage.getItem("deviceId");
   if (!id) {
-    id = "dev_" + Date.now().toString(36) + "_" + Math.random().toString(36).substring(2, 10);
+    id = "dev_" + Date.now().toString(36) + "_" + Math.random().toString(36).substr(2, 10);
     localStorage.setItem("deviceId", id);
   }
   return id;
@@ -188,6 +321,7 @@ const video = document.getElementById("video");
 const overlay = document.getElementById("overlay");
 const badge = document.getElementById("badge");
 const adminPanel = document.getElementById("adminPanel");
+const adminWrap = document.getElementById("adminWrap");
 const viewerInfo = document.getElementById("viewerInfo");
 const statusText = document.getElementById("statusText");
 const subStatus = document.getElementById("subStatus");
@@ -200,10 +334,20 @@ const selectedName = document.getElementById("selectedName");
 const subBadge = document.getElementById("subBadge");
 const prevEpBtn = document.getElementById("prevEpBtn");
 const nextEpBtn = document.getElementById("nextEpBtn");
+const epSearchInput = document.getElementById("epSearchInput");
+const prefetchToggle = document.getElementById("prefetchToggle");
+const prefetchStatus = document.getElementById("prefetchStatus");
+const minimizeBtn = document.getElementById("minimizeBtn");
+const minimizePopup = document.getElementById("minimizePopup");
+const minimizeBackdrop = document.getElementById("minimizeBackdrop");
+const seasonModal = document.getElementById("seasonModal");
+const seasonList = document.getElementById("seasonList");
+const seasonModalTitle = document.getElementById("seasonModalTitle");
 
 let socket = null;
 let isAdmin = false;
 let currentAnime = null;
+let currentAnimeGroup = null;
 let currentVideoKey = null;
 let currentEpisode = 1;
 let currentSeason = 1;
@@ -217,18 +361,34 @@ let subtitlePollInterval = null;
 let restoringPosition = false;
 let saveInterval = null;
 
-function toast(msg) {
+// Prefetch state
+let prefetchEnabled = localStorage.getItem("prefetchEnabled") === "true";
+let prefetchAbort = false;
+let prefetchRunning = false;
+
+// Minimize state
+let isPanelMinimized = false;
+
+// ═══════════════════════════════════════════════════════════
+// UI HELPERS
+// ═══════════════════════════════════════════════════════════
+
+function toast(msg, type = "info") {
+  const icons = {
+    success: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>',
+    error: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>',
+    info: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>'
+  };
   const t = document.createElement("div");
-  t.className = "toast";
-  t.innerHTML = msg;
+  t.className = "toast " + type;
+  t.innerHTML = icons[type] + '<span>' + msg + '</span>';
   document.body.appendChild(t);
   setTimeout(() => t.remove(), 3500);
 }
 
 function setOverlay(msg, showSpinner = true) {
   overlay.classList.remove("hidden");
-  overlay.innerHTML = (showSpinner ? '<div class="spinner"></div>' : '') +
-    '<div class="msg">' + msg + '</div>';
+  overlay.innerHTML = (showSpinner ? '<div class="spinner"></div>' : '') + '<div class="msg">' + msg + '</div>';
 }
 
 function hideOverlay() {
@@ -237,12 +397,12 @@ function hideOverlay() {
 
 function setSubStatus(state, text) {
   const icons = {
-    ok: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>',
-    loading: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>',
-    none: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="14" rx="2"/><line x1="7" y1="12" x2="10" y2="12"/><line x1="13" y1="12" x2="17" y2="12"/><line x1="7" y1="15" x2="10" y2="15"/><line x1="13" y1="15" x2="17" y2="15"/></svg>'
+    ok: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>',
+    loading: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>',
+    none: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="14" rx="2"/><line x1="7" y1="12" x2="10" y2="12"/><line x1="13" y1="12" x2="17" y2="12"/></svg>'
   };
   subStatus.className = "sub-status " + state;
-  subStatus.innerHTML = icons[state] + ' ' + text;
+  subStatus.innerHTML = icons[state] + ' <span>' + text + '</span>';
   subBadge.className = "sub-badge " + (state === "ok" ? "yes" : "no");
   subBadge.textContent = text;
 }
@@ -254,6 +414,10 @@ function updateEpisodeUI() {
   nextEpBtn.disabled = (maxEpisodes > 0 && currentEpisode >= maxEpisodes) || isLoading;
 }
 
+// ═══════════════════════════════════════════════════════════
+// SOCKET
+// ═══════════════════════════════════════════════════════════
+
 function connectSocket() {
   socket = io({ transports: ["websocket", "polling"], reconnection: true, reconnectionAttempts: Infinity });
 
@@ -263,23 +427,25 @@ function connectSocket() {
 
   socket.on("disconnect", () => {
     badge.className = "badge connecting";
-    badge.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg> Bağlanıyor';
+    badge.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg> Bağlanıyor';
   });
 
   socket.on("you-are", (data) => {
     isAdmin = !!data.isAdmin;
     if (isAdmin) {
       badge.className = "badge admin";
-      badge.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M2 4l3 12h14l3-12-6 7-4-7-4 7z"/><line x1="5" y1="20" x2="19" y2="20"/></svg> Yönetici';
+      badge.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M2 4l3 12h14l3-12-6 7-4-7-4 7z"/><line x1="5" y1="20" x2="19" y2="20"/></svg> Yönetici';
       adminPanel.classList.add("show");
       viewerInfo.style.display = "none";
+      minimizeBtn.classList.add("show");
       if (!hasVideo) setOverlay("Anime ara ve bölüm seç.<br>Seçtiğinde herkese yayınlanır.", false);
       statusText.textContent = "Yönetici modu";
     } else {
       badge.className = "badge viewer";
-      badge.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg> İzleyici';
+      badge.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg> İzleyici';
       adminPanel.classList.remove("show");
       viewerInfo.style.display = "block";
+      minimizeBtn.classList.remove("show");
       if (!hasVideo) setOverlay("Yönetici bekleniyor...", false);
       statusText.textContent = "İzleyici modu";
     }
@@ -291,10 +457,17 @@ function connectSocket() {
     liveBadge.style.display = "flex";
 
     const newKey = `${data.animeId}_${data.episode}_${data.mode || "sub"}`;
+    const isSameVideo = currentVideoKey === newKey;
     currentVideoKey = newKey;
     currentEpisode = data.episode || 1;
     currentSeason = data.season || 1;
     updateEpisodeUI();
+
+    if (!isSameVideo) {
+      prefetchAbort = true;
+      prefetchRunning = false;
+      if (saveInterval) clearInterval(saveInterval);
+    }
 
     loadVideoSource(data.url);
     if (data.title) statusText.textContent = data.title;
@@ -308,6 +481,11 @@ function connectSocket() {
         titleRomaji: data.title || ""
       };
       startSubtitleFlow(data.animeId, data.episode, data.mode || "sub", data.season || 1, anime);
+
+      // Prefetch tetikle
+      if (isAdmin && prefetchEnabled) {
+        startPrefetch();
+      }
     }
   });
 
@@ -322,8 +500,12 @@ function connectSocket() {
     setTimeout(() => applyControl(data), 500);
   });
 
-  socket.on("error-msg", (data) => toast('<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#f39c12" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg> ' + data.message));
+  socket.on("error-msg", (data) => toast(data.message, "error"));
 }
+
+// ═══════════════════════════════════════════════════════════
+// VIDEO
+// ═══════════════════════════════════════════════════════════
 
 function loadVideoSource(rawUrl) {
   if (hls) { try { hls.destroy(); } catch (e) {} hls = null; }
@@ -331,32 +513,20 @@ function loadVideoSource(rawUrl) {
   video.removeAttribute("src");
   while (video.firstChild) video.removeChild(video.firstChild);
   video.load();
-
   trTrack = null;
 
   const proxyUrl = "/api/proxy?url=" + encodeURIComponent(rawUrl);
 
   if (Hls.isSupported()) {
-    hls = new Hls({
-      enableWorker: true,
-      lowLatencyMode: false,
-      maxBufferLength: 30,
-      renderTextTracksNatively: false
-    });
+    hls = new Hls({ enableWorker: true, lowLatencyMode: false, maxBufferLength: 30, renderTextTracksNatively: false });
     hls.loadSource(proxyUrl);
     hls.attachMedia(video);
 
     hls.on(Hls.Events.MANIFEST_PARSED, () => {
-      try {
-        hls.subtitleDisplay = false;
-        hls.subtitleTrack = -1;
-      } catch (e) {}
+      try { hls.subtitleDisplay = false; hls.subtitleTrack = -1; } catch (e) {}
       const vt = video.textTracks;
-      for (let i = 0; i < vt.length; i++) {
-        vt[i].mode = "disabled";
-      }
+      for (let i = 0; i < vt.length; i++) vt[i].mode = "disabled";
 
-      // ⚡ localStorage'dan kaydedilmiş pozisyonu al
       if (currentVideoKey) {
         const saved = localStorage.getItem("videoPos_" + currentVideoKey);
         if (saved) {
@@ -375,7 +545,7 @@ function loadVideoSource(rawUrl) {
     });
 
     hls.on(Hls.Events.ERROR, (e, d) => {
-      if (d.fatal) toast('<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#e74c3c" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg> Video hatası');
+      if (d.fatal) toast("Video hatası", "error");
     });
   } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
     video.src = proxyUrl;
@@ -412,39 +582,26 @@ video.addEventListener("seeked", () => {
   socket.emit("video-control", { action: "seek", currentTime: video.currentTime, at: Date.now() });
 });
 
-// ⚡ Konumu düzenli kaydet
 setInterval(() => {
   if (hasVideo && currentVideoKey && video.currentTime > 1) {
     try {
-      localStorage.setItem("videoPos_" + currentVideoKey, JSON.stringify({
-        time: video.currentTime,
-        at: Date.now()
-      }));
+      localStorage.setItem("videoPos_" + currentVideoKey, JSON.stringify({ time: video.currentTime, at: Date.now() }));
     } catch (e) {}
   }
 }, 2000);
 
-// ⚡ Sekme arka plana atıldığında duraklat, geri gelince aynı yerden devam et
 document.addEventListener("visibilitychange", () => {
   if (document.hidden) {
-    // Duraklat
     if (hasVideo && video && !video.paused) {
       try { video.pause(); } catch (e) {}
     }
-    // Pozisyonu kaydet
     if (hasVideo && currentVideoKey) {
       try {
-        localStorage.setItem("videoPos_" + currentVideoKey, JSON.stringify({
-          time: video.currentTime,
-          at: Date.now()
-        }));
+        localStorage.setItem("videoPos_" + currentVideoKey, JSON.stringify({ time: video.currentTime, at: Date.now() }));
       } catch (e) {}
     }
   } else {
-    // Geri geldiğinde
     if (socket && socket.connected) socket.emit("request-sync");
-
-    // Pozisyonu geri yükle
     if (hasVideo && currentVideoKey) {
       const saved = localStorage.getItem("videoPos_" + currentVideoKey);
       if (saved) {
@@ -463,9 +620,12 @@ document.addEventListener("visibilitychange", () => {
   }
 });
 
+// ═══════════════════════════════════════════════════════════
+// SUBTITLE
+// ═══════════════════════════════════════════════════════════
+
 function attachTurkishSubtitle(animeId, ep, mode, season, anime) {
   if (!animeId) return;
-
   video.querySelectorAll("track").forEach((t) => t.remove());
   trTrack = null;
 
@@ -509,7 +669,6 @@ function attachTurkishSubtitle(animeId, ep, mode, season, anime) {
 
 async function startSubtitleFlow(animeId, episode, mode, season, anime) {
   setSubStatus("loading", "Altyazı hazırlanıyor...");
-
   let elapsed = 0;
   if (subtitlePollInterval) clearInterval(subtitlePollInterval);
   subtitlePollInterval = setInterval(async () => {
@@ -532,12 +691,93 @@ async function startSubtitleFlow(animeId, episode, mode, season, anime) {
 }
 
 function resetSubtitleState() {
-  if (subtitlePollInterval) {
-    clearInterval(subtitlePollInterval);
-    subtitlePollInterval = null;
-  }
+  if (subtitlePollInterval) { clearInterval(subtitlePollInterval); subtitlePollInterval = null; }
   setSubStatus("none", "Altyazı yok");
 }
+
+// ═══════════════════════════════════════════════════════════
+// PREFETCH
+// ═══════════════════════════════════════════════════════════
+
+function togglePrefetch() {
+  prefetchEnabled = !prefetchEnabled;
+  localStorage.setItem("prefetchEnabled", String(prefetchEnabled));
+  updatePrefetchUI();
+  if (prefetchEnabled) {
+    prefetchAbort = false;
+    if (currentAnime && hasVideo) startPrefetch();
+    toast("Arka plan hazırlama açıldı", "success");
+  } else {
+    prefetchAbort = true;
+    toast("Arka plan hazırlama kapatıldı", "info");
+  }
+}
+
+function updatePrefetchUI() {
+  if (prefetchEnabled) {
+    prefetchToggle.classList.add("on");
+  } else {
+    prefetchToggle.classList.remove("on");
+  }
+}
+
+async function startPrefetch() {
+  if (!currentAnime || prefetchRunning || prefetchAbort) return;
+  if (!prefetchEnabled) return;
+
+  prefetchRunning = true;
+  const anime = currentAnime;
+  const mode = modeSelect.value || "sub";
+  const season = currentSeason;
+  const startEp = currentEpisode;
+  const title = encodeURIComponent(anime.titleEnglish || anime.title || "");
+
+  prefetchStatus.classList.add("active");
+  prefetchStatus.textContent = `Sonraki bölümler hazırlanıyor... (0/5)`;
+
+  let done = 0;
+  const maxPrefetch = 5;
+
+  for (let i = 1; i <= maxPrefetch; i++) {
+    if (prefetchAbort) break;
+    if (!prefetchEnabled) break;
+
+    const nextEp = startEp + i;
+    if (maxEpisodes > 0 && nextEp > maxEpisodes) {
+      prefetchStatus.textContent = `Son bölüme ulaşıldı (${done} hazır)`;
+      break;
+    }
+
+    try {
+      const r = await fetch(`/api/prefetch-subtitle?id=${anime.id}&ep=${nextEp}&mode=${mode}&season=${season}&title=${title}`);
+      const d = await r.json();
+      if (d.status === "queued" || d.status === "cached" || d.status === "processing") {
+        done++;
+        prefetchStatus.textContent = `Sonraki bölümler hazırlanıyor... (${done}/${maxPrefetch})`;
+      } else if (d.error) {
+        prefetchStatus.textContent = `Hata: ${d.error}`;
+        break;
+      }
+    } catch (e) {
+      break;
+    }
+
+    await new Promise((r) => setTimeout(r, 3000));
+  }
+
+  if (!prefetchAbort && prefetchEnabled) {
+    prefetchStatus.textContent = `✅ ${done} bölüm hazırlandı`;
+    setTimeout(() => {
+      if (prefetchStatus.textContent.includes("hazırlandı")) prefetchStatus.textContent = "";
+    }, 8000);
+  }
+
+  prefetchRunning = false;
+}
+
+// ═══════════════════════════════════════════════════════════
+// SEARCH + SEASON GROUPING
+// ═══════════════════════════════════════════════════════════
 
 async function doSearch() {
   const q = document.getElementById("searchInput").value.trim();
@@ -545,51 +785,157 @@ async function doSearch() {
   const btn = document.getElementById("searchBtn");
   btn.disabled = true;
   btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>';
-  resultsBox.innerHTML = '<div style="padding:12px;color:#888;font-size:12px">Aranıyor...</div>';
+  resultsBox.innerHTML = '<div style="padding:12px;color:#888;font-size:12px;grid-column:1/-1">Aranıyor...</div>';
   try {
     const r = await fetch("/api/search?q=" + encodeURIComponent(q));
     const d = await r.json();
     if (!d.results || d.results.length === 0) {
-      resultsBox.innerHTML = '<div style="padding:12px;color:#888;font-size:12px">Sonuç yok</div>';
+      resultsBox.innerHTML = '<div style="padding:12px;color:#888;font-size:12px;grid-column:1/-1">Sonuç yok</div>';
       return;
     }
+
+    // Sezonları grupla
+    const groups = groupByAnime(d.results);
+
     resultsBox.innerHTML = "";
-    d.results.forEach((x) => {
+    groups.forEach((g) => {
       const c = document.createElement("div");
       c.className = "result";
-      c.innerHTML = `<img src="${x.poster}" onerror="this.style.opacity=0.3"><div class="result-title">${escapeHtml(x.title)}</div><div class="result-meta">${x.year} • ${x.episodes}b</div>`;
-      c.onclick = () => selectAnime(x, c);
+      const main = g.main;
+      const seasonLabel = g.seasons.length > 1 ? `<span class="season-count">${g.seasons.length} sezon</span>` : "";
+      c.innerHTML = `
+        <img src="${main.poster}" onerror="this.style.opacity=0.3">
+        ${seasonLabel}
+        <div class="result-title">${escapeHtml(main.title)}</div>
+        <div class="result-meta">${main.year} • ${main.episodes}b</div>
+      `;
+      c.onclick = () => {
+        if (g.seasons.length > 1) {
+          openSeasonModal(g);
+        } else {
+          selectAnime(main, c, g);
+        }
+      };
       resultsBox.appendChild(c);
     });
   } catch (e) {
-    resultsBox.innerHTML = '<div style="padding:12px;color:#e74c3c;font-size:12px">Hata</div>';
+    resultsBox.innerHTML = '<div style="padding:12px;color:#e74c3c;font-size:12px;grid-column:1/-1">Hata</div>';
   } finally {
     btn.disabled = false;
-    btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg> Ara';
+    btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:16px;height:16px"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg> Ara';
   }
 }
 
-function selectAnime(anime, el) {
+function groupByAnime(results) {
+  const groups = new Map();
+
+  results.forEach((r) => {
+    let rawTitle = r.titleEnglish || r.title || "";
+    // Season/Part kısımlarını çıkar
+    let key = rawTitle
+      .replace(/\s*[-:]?\s*Season\s*\d+.*$/i, "")
+      .replace(/\s*\d+(st|nd|rd|th)\s+Season.*$/i, "")
+      .replace(/\s*Part\s*\d+.*$/i, "")
+      .replace(/\s*[-:]\s*Starting.*$/i, "")
+      .trim();
+
+    if (!key) key = rawTitle;
+
+    if (!groups.has(key)) {
+      groups.set(key, { key, main: r, seasons: [r] });
+    } else {
+      groups.get(key).seasons.push(r);
+    }
+  });
+
+  // Ana seriyi sezon listesinin başına koy (daha kısa başlıklı olan genelde S1'dir)
+  groups.forEach((g) => {
+    g.seasons.sort((a, b) => {
+      const aTitle = a.titleEnglish || a.title || "";
+      const bTitle = b.titleEnglish || b.title || "";
+      const aHasSeason = /season\s*\d+/i.test(aTitle) || /\d+(st|nd|rd|th)\s+season/i.test(aTitle);
+      const bHasSeason = /season\s*\d+/i.test(bTitle) || /\d+(st|nd|rd|th)\s+season/i.test(bTitle);
+      if (aHasSeason !== bHasSeason) return aHasSeason ? 1 : -1;
+      return (a.year || 0) - (b.year || 0);
+    });
+    g.main = g.seasons[0];
+  });
+
+  return Array.from(groups.values());
+}
+
+function openSeasonModal(group) {
+  currentAnimeGroup = group;
+  seasonModalTitle.textContent = group.main.titleEnglish || group.main.title;
+  seasonList.innerHTML = "";
+
+  group.seasons.forEach((s, idx) => {
+    const item = document.createElement("div");
+    item.className = "season-item";
+    const title = s.titleEnglish || s.title;
+    const year = s.year || "";
+    const epCount = s.episodes || 0;
+
+    // Sezon numarasını çıkar
+    let seasonNum = idx + 1;
+    const sm = title.match(/season\s*(\d+)/i) || title.match(/(\d+)(st|nd|rd|th)\s+season/i);
+    if (sm) seasonNum = parseInt(sm[1]);
+
+    item.innerHTML = `
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/><line x1="9" y1="4" x2="9" y2="20"/><line x1="15" y1="4" x2="15" y2="20"/></svg>
+      <div class="info">
+        <div class="name">Sezon ${seasonNum}</div>
+        <div class="meta">${year} • ${epCount} bölüm</div>
+      </div>
+    `;
+    item.onclick = () => {
+      document.querySelectorAll(".season-item").forEach((x) => x.classList.remove("selected"));
+      item.classList.add("selected");
+      selectAnime(s, null, group, seasonNum);
+      closeSeasonModal();
+    };
+    seasonList.appendChild(item);
+  });
+
+  seasonModal.classList.add("active");
+}
+
+function closeSeasonModal() {
+  seasonModal.classList.remove("active");
+}
+
+// ═══════════════════════════════════════════════════════════
+// ANİME SEÇ + BÖLÜM
+// ═══════════════════════════════════════════════════════════
+
+function selectAnime(anime, el, group, seasonNum) {
   if (isLoading) return;
-  document.querySelectorAll(".result").forEach((x) => x.classList.remove("selected"));
-  el.classList.add("selected");
+  if (el) {
+    document.querySelectorAll(".result").forEach((x) => x.classList.remove("selected"));
+    el.classList.add("selected");
+  }
   currentAnime = anime;
+  currentAnimeGroup = group || { main: anime, seasons: [anime] };
   selectedName.textContent = anime.title;
   maxEpisodes = anime.episodes || 0;
   currentEpisode = 1;
 
-  // AniList title'dan sezon numarası çıkar
-  let detectedSeason = 1;
-  const titleCheck = (anime.titleEnglish || anime.title || "").toLowerCase();
-  const seasonMatch = titleCheck.match(/season\s*(\d+)/);
-  const secondSeasonMatch = titleCheck.match(/(\d+)(st|nd|rd|th)\s*season/);
-  if (seasonMatch) detectedSeason = parseInt(seasonMatch[1]);
-  else if (secondSeasonMatch) detectedSeason = parseInt(secondSeasonMatch[1]);
-  else if (titleCheck.includes("season 2") || titleCheck.includes("2nd")) detectedSeason = 2;
-  else if (titleCheck.includes("season 3") || titleCheck.includes("3rd")) detectedSeason = 3;
-  else if (titleCheck.includes("season 4") || titleCheck.includes("4th")) detectedSeason = 4;
+  if (seasonNum) {
+    currentSeason = seasonNum;
+  } else {
+    // Sezon numarasını title'dan çıkar
+    let detectedSeason = 1;
+    const titleCheck = (anime.titleEnglish || anime.title || "").toLowerCase();
+    const seasonMatch = titleCheck.match(/season\s*(\d+)/);
+    const secondSeasonMatch = titleCheck.match(/(\d+)(st|nd|rd|th)\s*season/);
+    if (seasonMatch) detectedSeason = parseInt(seasonMatch[1]);
+    else if (secondSeasonMatch) detectedSeason = parseInt(secondSeasonMatch[1]);
+    else if (titleCheck.includes("season 2") || titleCheck.includes("2nd")) detectedSeason = 2;
+    else if (titleCheck.includes("season 3") || titleCheck.includes("3rd")) detectedSeason = 3;
+    else if (titleCheck.includes("season 4") || titleCheck.includes("4th")) detectedSeason = 4;
+    currentSeason = detectedSeason;
+  }
 
-  currentSeason = detectedSeason;
   updateEpisodeUI();
   loadCurrentEpisode();
 }
@@ -608,6 +954,33 @@ function nextEpisode() {
   }
 }
 
+function jumpToEpisode() {
+  if (!currentAnime) {
+    toast("Önce anime seç", "info");
+    return;
+  }
+  const val = parseInt(epSearchInput.value);
+  if (!val || val < 1) {
+    toast("Geçerli bir bölüm numarası yaz", "error");
+    return;
+  }
+  if (val === currentEpisode) {
+    toast(`Bölüm ${val} zaten açık`, "info");
+    epSearchInput.value = "";
+    return;
+  }
+  if (maxEpisodes > 0 && val > maxEpisodes) {
+    toast(`Bu animede ${maxEpisodes} bölüm var. ${val} yok.`, "error");
+    epSearchInput.value = "";
+    return;
+  }
+  currentEpisode = val;
+  updateEpisodeUI();
+  loadCurrentEpisode();
+  epSearchInput.value = "";
+  epSearchInput.blur();
+}
+
 function onModeChange() {
   if (!currentAnime || isLoading) return;
   loadCurrentEpisode();
@@ -618,6 +991,7 @@ async function loadCurrentEpisode() {
   if (isLoading) return;
   isLoading = true;
   updateEpisodeUI();
+  prefetchAbort = true; // Önceki prefetch'i durdur
 
   document.querySelectorAll(".result").forEach((x) => x.classList.add("disabled"));
 
@@ -635,7 +1009,7 @@ async function loadCurrentEpisode() {
 
     if (d.error) {
       setOverlay("❌ " + d.error, false);
-      toast('<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#e74c3c" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg> ' + d.error);
+      toast(d.error, "error");
       return;
     }
 
@@ -648,16 +1022,17 @@ async function loadCurrentEpisode() {
     statusText.textContent = videoTitle;
 
     socket.emit("video-load", {
-      url: d.url,
-      title: videoTitle,
-      animeId: currentAnime.id,
-      episode: ep,
-      season: season,
-      mode: mode,
-      hasSubtitles: true
+      url: d.url, title: videoTitle, animeId: currentAnime.id,
+      episode: ep, season: season, mode: mode, hasSubtitles: true
     });
 
     startSubtitleFlow(currentAnime.id, ep, mode, season, currentAnime);
+
+    // Prefetch tetikle
+    prefetchAbort = false;
+    if (isAdmin && prefetchEnabled) {
+      setTimeout(() => startPrefetch(), 3000);
+    }
   } catch (e) {
     setOverlay("❌ " + e.message, false);
   } finally {
@@ -667,9 +1042,41 @@ async function loadCurrentEpisode() {
   }
 }
 
-document.getElementById("searchInput").addEventListener("keydown", (e) => {
-  if (e.key === "Enter") doSearch();
-});
+// ═══════════════════════════════════════════════════════════
+// MINIMIZE PANEL
+// ═══════════════════════════════════════════════════════════
+
+function toggleMinimizePopup() {
+  if (minimizePopup.classList.contains("show")) {
+    closeMinimizePopup();
+  } else {
+    minimizePopup.classList.add("show");
+    minimizeBackdrop.classList.add("show");
+  }
+}
+
+function closeMinimizePopup() {
+  minimizePopup.classList.remove("show");
+  minimizeBackdrop.classList.remove("show");
+}
+
+function openFromMinimize() {
+  adminPanel.classList.remove("minimized");
+  isPanelMinimized = false;
+  minimizeBtn.classList.remove("show");
+  closeMinimizePopup();
+}
+
+function minimizePanelCompletely() {
+  adminPanel.classList.add("minimized");
+  isPanelMinimized = true;
+  minimizeBtn.classList.add("show");
+  closeMinimizePopup();
+}
+
+// ═══════════════════════════════════════════════════════════
+// HELPERS + KEYBOARD
+// ═══════════════════════════════════════════════════════════
 
 function escapeHtml(t) {
   const d = document.createElement("div");
@@ -677,7 +1084,6 @@ function escapeHtml(t) {
   return d.innerHTML;
 }
 
-// İzleyici: native video kontrollerini gizle
 setInterval(() => {
   if (video && !isAdmin) {
     if (video.hasAttribute("controls")) video.removeAttribute("controls");
@@ -686,28 +1092,29 @@ setInterval(() => {
   }
 }, 500);
 
-// Klavye kısayolları (admin için)
 document.addEventListener("keydown", (e) => {
   if (!isAdmin || !hasVideo) return;
   if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA" || e.target.tagName === "SELECT") return;
-
-  if (e.key === "ArrowLeft") {
-    e.preventDefault();
-    video.currentTime = Math.max(0, video.currentTime - 5);
-  } else if (e.key === "ArrowRight") {
-    e.preventDefault();
-    video.currentTime = Math.min(video.duration || 0, video.currentTime + 5);
-  } else if (e.key === " ") {
-    e.preventDefault();
-    if (video.paused) video.play().catch(() => {});
-    else video.pause();
-  } else if (e.key === "n" || e.key === "N") {
-    nextEpisode();
-  } else if (e.key === "p" || e.key === "P") {
-    prevEpisode();
-  }
+  if (e.key === "ArrowLeft") { e.preventDefault(); video.currentTime = Math.max(0, video.currentTime - 5); }
+  else if (e.key === "ArrowRight") { e.preventDefault(); video.currentTime = Math.min(video.duration || 0, video.currentTime + 5); }
+  else if (e.key === " ") { e.preventDefault(); if (video.paused) video.play().catch(() => {}); else video.pause(); }
+  else if (e.key === "n" || e.key === "N") nextEpisode();
+  else if (e.key === "p" || e.key === "P") prevEpisode();
 });
 
+document.getElementById("searchInput").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") doSearch();
+});
+
+epSearchInput.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") jumpToEpisode();
+});
+
+// ═══════════════════════════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════════════════════════
+
+updatePrefetchUI();
 connectSocket();
 </script>
 </body>
