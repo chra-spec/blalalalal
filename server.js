@@ -21,7 +21,7 @@ app.use(express.static(__dirname));
 const CONFIG = {
   PORT: process.env.PORT || 3000,
   ADMIN_FILE: "/data/admin.json",
-  SA_KEY: "90b9a65c2e799e5af2d8a774cb657e1",
+  SA_KEY: "90b9a65c2e799e5af2d8a774cb657e1a",
   SA_ENDPOINT: "https://api.scraperapi.com",
   CACHE_TTL: 60 * 60 * 1000,
   SUB_CACHE_TTL: 6 * 60 * 60 * 1000,
