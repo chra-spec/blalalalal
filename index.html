@@ -11,21 +11,19 @@
   body{background:#0a0a14;color:#fff;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;min-height:100vh;overflow-x:hidden}
   .header{position:sticky;top:0;z-index:100;padding:10px 16px;background:rgba(26,26,46,0.95);backdrop-filter:blur(10px);display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #222}
   .header h1{font-size:15px;color:#667eea;font-weight:700}
-  .badge{padding:4px 12px;border-radius:12px;font-size:11px;font-weight:700;letter-spacing:0.5px}
+  .badge{padding:4px 12px;border-radius:12px;font-size:11px;font-weight:700}
   .badge.admin{background:#f39c12;color:#000;box-shadow:0 0 12px rgba(243,156,18,0.5)}
   .badge.viewer{background:#333;color:#ccc}
   .badge.connecting{background:#555;color:#fff;animation:pulse 1.5s infinite}
   @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.5}}
-
   .video-wrap{position:relative;width:100%;background:#000;aspect-ratio:16/9;max-height:60vh}
   .video-wrap video{width:100%;height:100%;display:block;background:#000}
-  .video-wrap video::cue{background:rgba(0,0,0,0.75);color:#fff;font-size:18px;font-weight:600;text-shadow:1px 1px 2px #000}
+  .video-wrap video::cue{background:rgba(0,0,0,0.75);color:#fff;font-size:18px;font-weight:600}
   .video-overlay{position:absolute;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.88);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;color:#ccc;font-size:14px;text-align:center;padding:24px;z-index:5}
   .video-overlay.hidden{display:none}
   .video-overlay .msg{line-height:1.5;max-width:400px}
   .spinner{width:32px;height:32px;border:3px solid rgba(102,126,234,0.2);border-top-color:#667eea;border-radius:50%;animation:spin 0.8s linear infinite}
   @keyframes spin{to{transform:rotate(360deg)}}
-
   .status-bar{padding:7px 14px;background:#12121f;font-size:11px;color:#888;display:flex;justify-content:space-between;border-bottom:1px solid #222;align-items:center;gap:8px;flex-wrap:wrap}
   .status-bar .live{color:#e74c3c;font-weight:700;display:flex;align-items:center;gap:6px}
   .status-bar .live::before{content:"";width:7px;height:7px;background:#e74c3c;border-radius:50%;animation:pulse 1.5s infinite}
@@ -33,7 +31,6 @@
   .sub-status.ok{background:rgba(39,174,96,0.2);color:#27ae60}
   .sub-status.loading{background:rgba(243,156,18,0.2);color:#f39c12}
   .sub-status.none{background:#222;color:#666}
-
   .admin-panel{display:none;padding:12px;max-width:1200px;margin:0 auto}
   .admin-panel.show{display:block}
   .section-title{font-size:12px;color:#667eea;font-weight:700;margin-bottom:8px;text-transform:uppercase;letter-spacing:0.5px}
@@ -42,7 +39,6 @@
   .search-box input:focus{border-color:#667eea}
   .search-box button{padding:10px 20px;background:#667eea;color:#fff;border:none;border-radius:10px;font-weight:700;font-size:13px;cursor:pointer}
   .search-box button:disabled{background:#333;cursor:not-allowed}
-
   .results{display:grid;grid-template-columns:repeat(auto-fill,minmax(88px,1fr));gap:8px;margin-bottom:12px}
   .result{background:#1a1a2e;border-radius:8px;overflow:hidden;cursor:pointer;transition:transform 0.15s,border-color 0.15s;border:2px solid transparent;position:relative}
   .result:hover{transform:translateY(-2px);border-color:#667eea}
@@ -51,7 +47,6 @@
   .result img{width:100%;aspect-ratio:2/3;object-fit:cover;display:block;background:#333}
   .result-title{padding:5px;font-size:10px;line-height:1.25;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
   .result-meta{padding:0 5px 5px;font-size:9px;color:#666}
-
   .controls{display:flex;gap:8px;padding:10px;background:#1a1a2e;border-radius:10px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
   .controls label{font-size:11px;color:#888}
   .controls input,.controls select{padding:7px 10px;background:#0a0a14;color:#fff;border:1px solid #333;border-radius:6px;font-size:13px;text-align:center}
@@ -60,13 +55,10 @@
   .controls .sub-badge{padding:3px 9px;border-radius:10px;font-size:10px;font-weight:600}
   .controls .sub-badge.yes{background:rgba(39,174,96,0.2);color:#27ae60}
   .controls .sub-badge.no{background:#333;color:#888}
-
   .viewer-info{padding:20px;text-align:center;color:#666;font-size:12px;max-width:600px;margin:0 auto}
   .viewer-info .big{font-size:42px;margin-bottom:12px;opacity:0.5}
-
   .log{max-width:1200px;margin:0 auto;padding:0 12px 20px}
   .log .line{padding:3px 0;font-size:10px;color:#555;font-family:'Courier New',monospace}
-
   .toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#2d2d44;padding:10px 18px;border-radius:10px;font-size:12px;z-index:1000;animation:slideUp 0.3s;box-shadow:0 4px 20px rgba(0,0,0,0.5);max-width:90%}
   @keyframes slideUp{from{opacity:0;transform:translate(-50%,20px)}to{opacity:1;transform:translate(-50%,0)}}
 </style>
@@ -104,6 +96,8 @@
 
   <div class="section-title">Bölüm ve Mod</div>
   <div class="controls">
+    <label>Sezon:</label>
+    <input type="number" id="seasonInput" value="1" min="1" max="20" onchange="onEpChange()">
     <label>Bölüm:</label>
     <input type="number" id="epInput" value="1" min="1" max="9999" onchange="onEpChange()">
     <label>Mod:</label>
@@ -145,6 +139,7 @@ const subStatus = document.getElementById("subStatus");
 const liveBadge = document.getElementById("liveBadge");
 const resultsBox = document.getElementById("results");
 const epInput = document.getElementById("epInput");
+const seasonInput = document.getElementById("seasonInput");
 const modeSelect = document.getElementById("modeSelect");
 const selectedName = document.getElementById("selectedName");
 const subBadge = document.getElementById("subBadge");
@@ -252,9 +247,17 @@ function connectSocket() {
     loadVideoSource(data.url);
     if (data.title) statusText.textContent = data.title;
     if (data.mode) modeSelect.value = data.mode;
+    if (data.season) seasonInput.value = data.season;
 
     if (data.animeId && data.episode) {
-      startSubtitleFlow(data.animeId, data.episode, data.mode || "sub", data.hasSubtitles);
+      const animeTitle = (currentAnime && currentAnime.title) || data.title || "";
+      const anime = currentAnime || {
+        id: data.animeId,
+        title: data.title || "",
+        titleEnglish: data.title || "",
+        titleRomaji: data.title || ""
+      };
+      startSubtitleFlow(data.animeId, data.episode, data.mode || "sub", data.season || 1, anime);
     }
   });
 
@@ -298,12 +301,10 @@ function loadVideoSource(rawUrl) {
         hls.subtitleDisplay = false;
         hls.subtitleTrack = -1;
       } catch (e) {}
-
       const vt = video.textTracks;
       for (let i = 0; i < vt.length; i++) {
         vt[i].mode = "disabled";
       }
-
       if (lastKnownTime > 2 && video.currentTime < 2 && lastKnownKey === currentVideoKey) {
         restoringPosition = true;
         setTimeout(() => {
@@ -311,7 +312,6 @@ function loadVideoSource(rawUrl) {
           setTimeout(() => { restoringPosition = false; }, 800);
         }, 400);
       }
-
       log("Video hazır");
     });
 
@@ -358,13 +358,17 @@ video.addEventListener("timeupdate", () => {
   }
 });
 
-function attachTurkishSubtitle(animeId, ep, mode) {
+function attachTurkishSubtitle(animeId, ep, mode, season, anime) {
   if (!animeId) return;
 
   video.querySelectorAll("track").forEach((t) => t.remove());
   trTrack = null;
 
-  const url = `/api/subtitle?id=${animeId}&ep=${ep}&mode=${mode}&lang=tr&t=${Date.now()}`;
+  const title = encodeURIComponent(anime.titleEnglish || anime.title || "");
+  const romaji = encodeURIComponent(anime.titleRomaji || "");
+  const titleForOs = title || romaji;
+
+  const url = `/api/subtitle?id=${animeId}&ep=${ep}&mode=${mode}&season=${season}&lang=tr&title=${titleForOs}&t=${Date.now()}`;
   log("Türkçe altyazı yükleniyor...");
 
   const track = document.createElement("track");
@@ -393,9 +397,10 @@ function attachTurkishSubtitle(animeId, ep, mode) {
     }
   };
 
-  setTimeout(forceShow, 500);
-  setTimeout(forceShow, 1500);
-  setTimeout(forceShow, 3000);
+  setTimeout(forceShow, 400);
+  setTimeout(forceShow, 1200);
+  setTimeout(forceShow, 2500);
+  setTimeout(forceShow, 5000);
 
   track.addEventListener("load", () => {
     log("Türkçe altyazı yüklendi");
@@ -404,56 +409,33 @@ function attachTurkishSubtitle(animeId, ep, mode) {
 
   track.addEventListener("error", () => {
     log("Altyazı yükleme hatası");
-    setSubStatus("none", "Altyazı yok");
+    setSubStatus("none", "Altyazı bulunamadı");
   });
 }
 
-async function startSubtitleFlow(animeId, episode, mode, hasSubtitles) {
-  if (!hasSubtitles) {
-    setSubStatus("none", "Altyazı yok");
-    return;
-  }
-
+async function startSubtitleFlow(animeId, episode, mode, season, anime) {
   setSubStatus("loading", "Altyazı hazırlanıyor...");
-  log("Altyazı durumu kontrol ediliyor...");
+  log("Altyazı hazırlanıyor...");
 
-  try {
-    const r = await fetch(`/api/subtitle-status?id=${animeId}&ep=${episode}&mode=${mode}`);
-    const d = await r.json();
-
-    if (!d.hasSource) {
-      setSubStatus("none", "Altyazı yok");
-      return;
-    }
-
-    if (d.ready) {
-      setSubStatus("loading", "Altyazı yükleniyor...");
-      attachTurkishSubtitle(animeId, episode, mode);
-      return;
-    }
-
-    let elapsed = 0;
-    if (subtitlePollInterval) clearInterval(subtitlePollInterval);
-    subtitlePollInterval = setInterval(async () => {
-      elapsed += 3;
-      try {
-        const r2 = await fetch(`/api/subtitle-status?id=${animeId}&ep=${episode}&mode=${mode}`);
-        const d2 = await r2.json();
-        if (d2.ready) {
-          clearInterval(subtitlePollInterval);
-          subtitlePollInterval = null;
-          setSubStatus("loading", "Altyazı yükleniyor...");
-          attachTurkishSubtitle(animeId, episode, mode);
-        } else if (elapsed > 180) {
-          clearInterval(subtitlePollInterval);
-          subtitlePollInterval = null;
-          setSubStatus("none", "Altyazı zaman aşımı");
-        }
-      } catch (e) {}
-    }, 3000);
-  } catch (e) {
-    setSubStatus("none", "Altyazı yok");
-  }
+  let elapsed = 0;
+  if (subtitlePollInterval) clearInterval(subtitlePollInterval);
+  subtitlePollInterval = setInterval(async () => {
+    elapsed += 2;
+    try {
+      const r = await fetch(`/api/subtitle-status?id=${animeId}&ep=${episode}&mode=${mode}`);
+      const d = await r.json();
+      if (d.ready) {
+        clearInterval(subtitlePollInterval);
+        subtitlePollInterval = null;
+        setSubStatus("loading", "Altyazı yükleniyor...");
+        attachTurkishSubtitle(animeId, episode, mode, season, anime);
+      } else if (elapsed > 60) {
+        clearInterval(subtitlePollInterval);
+        subtitlePollInterval = null;
+        attachTurkishSubtitle(animeId, episode, mode, season, anime);
+      }
+    } catch (e) {}
+  }, 2000);
 }
 
 function resetSubtitleState() {
@@ -504,6 +486,7 @@ function selectAnime(anime, el) {
   selectedName.textContent = anime.title;
   epInput.max = anime.episodes || 9999;
   epInput.value = 1;
+  seasonInput.value = 1;
   log("Seçildi: " + anime.title);
   loadCurrentEpisode();
 }
@@ -526,14 +509,16 @@ async function loadCurrentEpisode() {
   document.querySelectorAll(".result").forEach((x) => x.classList.add("disabled"));
 
   const ep = parseInt(epInput.value) || 1;
+  const season = parseInt(seasonInput.value) || 1;
   const mode = modeSelect.value || "sub";
 
   setOverlay("Video kaynağı alınıyor...<br><span style='font-size:11px;color:#888'>10-20 saniye sürebilir</span>");
   resetSubtitleState();
-  log(`Bölüm ${ep} (${mode}) yükleniyor...`);
+  log(`Bölüm ${ep} (${mode}, S${season}) yükleniyor...`);
 
   try {
-    const r = await fetch(`/api/stream?id=${currentAnime.id}&ep=${ep}&mode=${mode}`);
+    const title = encodeURIComponent(currentAnime.titleEnglish || currentAnime.title || "");
+    const r = await fetch(`/api/stream?id=${currentAnime.id}&ep=${ep}&mode=${mode}&season=${season}&title=${title}`);
     const d = await r.json();
 
     if (d.error) {
@@ -543,31 +528,28 @@ async function loadCurrentEpisode() {
       return;
     }
 
-    log("Video hazır" + (d.cached ? " (önbellek)" : "") + " altyazı=" + (d.hasSubtitles ? "var" : "yok"));
+    log("Video hazır" + (d.cached ? " (önbellek)" : ""));
     hasVideo = true;
     hideOverlay();
     liveBadge.style.display = "flex";
 
-    const title = `${currentAnime.title} — Bölüm ${ep}`;
+    const videoTitle = `${currentAnime.title} — Bölüm ${ep}`;
     loadVideoSource(d.url);
-    statusText.textContent = title;
+    statusText.textContent = videoTitle;
 
     socket.emit("video-load", {
       url: d.url,
-      title: title,
+      title: videoTitle,
       animeId: currentAnime.id,
       episode: ep,
+      season: season,
       mode: mode,
-      hasSubtitles: !!d.hasSubtitles
+      hasSubtitles: true
     });
 
-    if (d.hasSubtitles) {
-      startSubtitleFlow(currentAnime.id, ep, mode, true);
-    } else {
-      setSubStatus("none", "Altyazı yok");
-    }
+    startSubtitleFlow(currentAnime.id, ep, mode, season, currentAnime);
 
-    log("Yayınlandı: " + title);
+    log("Yayınlandı: " + videoTitle);
   } catch (e) {
     log("Hata: " + e.message);
     setOverlay("❌ " + e.message, false);
@@ -607,16 +589,7 @@ document.addEventListener("visibilitychange", () => {
 });
 
 log("Uygulama başladı");
-connectServer();
-
-function connectServer() {
-  try {
-    connectSocket();
-  } catch (e) {
-    log("Bağlantı hatası: " + e.message);
-    setTimeout(connectServer, 3000);
-  }
-}
+connectSocket();
 </script>
 </body>
 </html>
