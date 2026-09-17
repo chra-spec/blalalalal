@@ -29,8 +29,14 @@ const CONFIG = {
   QUEUE_TIMEOUT: 120000,
   STREAM_ROUTE_TIMEOUT: 110000,
   TRANSLATE_CONCURRENCY: 2,
-  PLAN: [
+  TRANSLATE_MAX_FAIL_RATIO: 0.35,
+  TRANSLATE_DELAY_MS: 200,
+  PLAN_SUB: [
     { country: "us", variant: "sub" },
+    { country: "us", variant: "sub" }
+  ],
+  PLAN_DUB: [
+    { country: "us", variant: "dub" },
     { country: "us", variant: "sub" }
   ]
 };
@@ -106,7 +112,7 @@ class SerialQueue {
 
     const waited = Date.now() - task.at;
     if (waited > CONFIG.QUEUE_TIMEOUT) {
-      task.reject(new Error("queue timeout"));
+      task.reject(new Error("kuyruk zaman asimi"));
       this.running = false;
       setImmediate(() => this.process());
       return;
@@ -139,7 +145,7 @@ class SerialQueue {
 const scraperQueue = new SerialQueue();
 
 async function callScraperAPI(targetUrl, country) {
-  if (!CONFIG.SA_KEY) return { html: null, status: 0, error: "no_key" };
+  if (!CONFIG.SA_KEY) return { html: null, status: 0, error: "api_key_yok" };
 
   const params = new URLSearchParams({
     api_key: CONFIG.SA_KEY,
@@ -218,28 +224,29 @@ function isConcurrencyError(html) {
          html.includes("credits");
 }
 
-async function fetchStreamInfo(animeId, episode) {
+async function fetchStreamInfo(animeId, episode, mode) {
   const baseUrl = `https://vidnest.fun/anime/${animeId}/${episode}`;
+  const plan = mode === "dub" ? CONFIG.PLAN_DUB : CONFIG.PLAN_SUB;
 
-  for (let i = 0; i < CONFIG.PLAN.length; i++) {
-    const plan = CONFIG.PLAN[i];
-    const targetUrl = `${baseUrl}/${plan.variant}`;
+  for (let i = 0; i < plan.length; i++) {
+    const p = plan[i];
+    const targetUrl = `${baseUrl}/${p.variant}`;
 
-    log("PLAN", `#${i + 1} ${plan.variant}/${plan.country}`);
+    log("PLAN", `#${i + 1} ${p.variant}/${p.country} (${mode})`);
 
-    const result = await callScraperAPI(targetUrl, plan.country);
+    const result = await callScraperAPI(targetUrl, p.country);
 
     const isLimitError = result.status === 429 || result.status === 409 || result.status === 401 || result.status === 403;
     if (isLimitError || (result.html && isConcurrencyError(result.html))) {
       log("RETRY", "Limit, 6s bekle");
       await new Promise((r) => setTimeout(r, 6000));
-      const retry = await callScraperAPI(targetUrl, plan.country);
+      const retry = await callScraperAPI(targetUrl, p.country);
       if (retry.html && !isConcurrencyError(retry.html)) {
         const m3u8 = extractM3u8(retry.html);
         if (m3u8) {
           const sub = extractSubtitleFromHtml(retry.html);
           log("OK", `Plan#${i + 1} retry sub=${sub ? "var" : "yok"}`);
-          return { m3u8, subtitleUrl: sub };
+          return { m3u8, subtitleUrl: sub, mode: p.variant };
         }
       }
       continue;
@@ -259,7 +266,7 @@ async function fetchStreamInfo(animeId, episode) {
     if (m3u8) {
       const sub = extractSubtitleFromHtml(result.html);
       log("OK", `Plan#${i + 1} sub=${sub ? "var" : "yok"}`);
-      return { m3u8, subtitleUrl: sub };
+      return { m3u8, subtitleUrl: sub, mode: p.variant };
     }
 
     log("MISS", `Plan#${i + 1} m3u8 yok`);
@@ -325,32 +332,49 @@ function buildVtt(cues) {
 async function translateText(text) {
   if (!text || !text.trim()) return text;
 
-  const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl=tr&dt=t&q=${encodeURIComponent(text)}`;
+  const clean = text.replace(/\s+/g, " ").trim();
+  const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl=tr&dt=t&q=${encodeURIComponent(clean)}`;
 
-  for (let attempt = 1; attempt <= 3; attempt++) {
+  for (let attempt = 1; attempt <= 4; attempt++) {
     try {
-      const r = await fetch(url, { signal: AbortSignal.timeout(8000) });
+      const r = await fetch(url, {
+        signal: AbortSignal.timeout(8000),
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+          "Accept": "*/*",
+          "Accept-Language": "tr-TR,tr;q=0.9,en;q=0.8"
+        }
+      });
 
       if (r.status === 429) {
-        await new Promise((res) => setTimeout(res, 1500 * attempt));
+        log("TRANS", `429 (${attempt}/4)`);
+        await new Promise((res) => setTimeout(res, 2500 * attempt));
         continue;
       }
-      if (!r.ok) return text;
+
+      if (!r.ok) {
+        log("TRANS", `HTTP ${r.status}`);
+        return null;
+      }
 
       const d = await r.json();
-      if (!d || !d[0]) return text;
-      return d[0].map((x) => x[0]).join("");
+      if (!d || !d[0] || !Array.isArray(d[0])) return null;
+
+      const translated = d[0].map((x) => x[0]).join("").trim();
+      return translated || null;
     } catch (e) {
-      await new Promise((res) => setTimeout(res, 1000 * attempt));
+      log("TRANS", `Hata: ${e.message.slice(0, 60)}`);
+      await new Promise((res) => setTimeout(res, 1500 * attempt));
     }
   }
-  return text;
+  return null;
 }
 
 async function translateAll(texts) {
   const results = new Array(texts.length);
   let cursor = 0;
   let done = 0;
+  let failed = 0;
   const total = texts.length;
 
   const worker = async () => {
@@ -358,15 +382,20 @@ async function translateAll(texts) {
       const idx = cursor++;
       if (idx >= total) return;
 
-      results[idx] = await translateText(texts[idx]);
+      const r = await translateText(texts[idx]);
+      if (r === null || r === "") {
+        failed++;
+        results[idx] = texts[idx];
+      } else {
+        results[idx] = r;
+      }
       done++;
 
       if (done % 25 === 0 || done === total) {
-        log("SUB", `Progress: ${done}/${total}`);
+        log("SUB", `Progress: ${done}/${total} (hata: ${failed})`);
       }
 
-      // Rate limit'i yumuşatmak için kısa bekleme
-      await new Promise((res) => setTimeout(res, 120));
+      await new Promise((res) => setTimeout(res, CONFIG.TRANSLATE_DELAY_MS));
     }
   };
 
@@ -375,16 +404,22 @@ async function translateAll(texts) {
 
   await Promise.race([
     Promise.all(workers),
-    new Promise((res) => setTimeout(res, 120000))
+    new Promise((res) => setTimeout(res, 180000))
   ]);
 
-  log("SUB", `Translate bitis: ${done}/${total}`);
+  log("SUB", `Translate bitis: ${done}/${total} (hata: ${failed})`);
+
+  if (failed > total * CONFIG.TRANSLATE_MAX_FAIL_RATIO) {
+    log("SUB", `Cok fazla hata (${failed}/${total}), kaydedilmedi`);
+    return null;
+  }
+
   return results;
 }
 
-async function generateTranslatedSubtitle(subUrl, key) {
+async function generateTranslatedSubtitle(subUrl, key, mode) {
   try {
-    log("SUB", `Indiriliyor`);
+    log("SUB", `Indiriliyor (${mode})`);
     const buf = await curlFetch(subUrl);
     if (!buf || buf.length === 0) {
       log("SUB", "Indirilemedi");
@@ -403,7 +438,12 @@ async function generateTranslatedSubtitle(subUrl, key) {
     const t0 = Date.now();
 
     const translated = await translateAll(cues.map((c) => c.text));
-    cues.forEach((c, i) => { c.text = translated[i]; });
+    if (!translated) {
+      log("SUB", "Ceviri basarisiz");
+      return null;
+    }
+
+    cues.forEach((c, i) => { c.text = translated[i] || c.text; });
 
     const finalVtt = buildVtt(cues);
     const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
@@ -425,7 +465,7 @@ app.get("/api/search", async (req, res) => {
     if (q.length < 2) return res.json({ results: [] });
 
     const body = {
-      query: "query($s:String){Page(perPage:15){media(search:$s,type:ANIME,sort:POPULARITY_DESC){id title{english romaji} episodes format seasonYear coverImage{large}}}}",
+      query: "query($s:String){Page(perPage:25){media(search:$s,type:ANIME,sort:TRENDING_DESC){id title{english romaji native} episodes format seasonYear coverImage{large} averageScore}}}",
       variables: { s: q }
     };
 
@@ -440,12 +480,13 @@ app.get("/api/search", async (req, res) => {
     res.json({
       results: m.map((x) => ({
         id: x.id,
-        title: x.title.english || x.title.romaji,
+        title: x.title.english || x.title.romaji || x.title.native,
         titleRomaji: x.title.romaji,
         episodes: x.episodes || 0,
         format: x.format || "TV",
         year: x.seasonYear || "",
-        poster: x.coverImage ? x.coverImage.large : ""
+        poster: x.coverImage ? x.coverImage.large : "",
+        score: x.averageScore || 0
       }))
     });
   } catch (e) {
@@ -457,18 +498,19 @@ app.get("/api/stream", async (req, res) => {
   const routeTimeout = setTimeout(() => {
     if (!res.headersSent) {
       log("TIMEOUT", "Stream route");
-      res.status(200).json({ error: "Zaman asimi." });
+      res.status(200).json({ error: "Zaman asimi. Farkli bolum deneyin." });
     }
   }, CONFIG.STREAM_ROUTE_TIMEOUT);
 
   try {
-    const { id, ep } = req.query;
+    const { id, ep, mode } = req.query;
     if (!id || !ep) {
       clearTimeout(routeTimeout);
       return res.json({ error: "id ve ep gerekli" });
     }
 
-    const key = `${id}_${ep}`;
+    const videoMode = mode === "dub" ? "dub" : "sub";
+    const key = `${id}_${ep}_${videoMode}`;
 
     if (streamInfoCache.has(key)) {
       clearTimeout(routeTimeout);
@@ -477,55 +519,58 @@ app.get("/api/stream", async (req, res) => {
       return res.json({
         url: info.m3u8,
         hasSubtitles: !!info.subtitleUrl,
+        mode: info.mode,
         cached: true
       });
     }
 
     log("STREAM", key);
-    const info = await scraperQueue.run(() => fetchStreamInfo(id, ep));
+    const info = await scraperQueue.run(() => fetchStreamInfo(id, ep, videoMode));
 
     clearTimeout(routeTimeout);
 
     if (!info || !info.m3u8) {
-      return res.json({ error: "Video bulunamadi. Farkli bolum deneyin." });
+      return res.json({ error: "Video bulunamadi. Farkli bolum veya mod deneyin." });
     }
 
     m3u8Cache.set(key, info.m3u8);
     setTimeout(() => m3u8Cache.delete(key), CONFIG.CACHE_TTL);
 
-    streamInfoCache.set(key, { m3u8: info.m3u8, subtitleUrl: info.subtitleUrl });
+    streamInfoCache.set(key, { m3u8: info.m3u8, subtitleUrl: info.subtitleUrl, mode: info.mode });
     setTimeout(() => streamInfoCache.delete(key), CONFIG.CACHE_TTL);
 
     if (info.subtitleUrl && !subtitleJobs.has(key) && !subtitleCache.has(key)) {
-      subtitleJobs.set(key, generateTranslatedSubtitle(info.subtitleUrl, key).finally(() => subtitleJobs.delete(key)));
+      subtitleJobs.set(key, generateTranslatedSubtitle(info.subtitleUrl, key, info.mode).finally(() => subtitleJobs.delete(key)));
     }
 
     log("STREAM", `OK ${key} sub=${info.subtitleUrl ? "var" : "yok"}`);
-    res.json({ url: info.m3u8, hasSubtitles: !!info.subtitleUrl });
+    res.json({ url: info.m3u8, hasSubtitles: !!info.subtitleUrl, mode: info.mode });
   } catch (e) {
     clearTimeout(routeTimeout);
     if (!res.headersSent) res.json({ error: e.message || "Hata" });
   }
 });
+
 app.get("/api/subtitle", async (req, res) => {
   try {
-    const { id, ep, lang } = req.query;
+    const { id, ep, mode, lang } = req.query;
     if (!id || !ep) return res.status(400).send("id ve ep gerekli");
 
-    const key = `${id}_${ep}`;
+    const videoMode = mode === "dub" ? "dub" : "sub";
+    const key = `${id}_${ep}_${videoMode}`;
     log("SUBREQ", `${key} lang=${lang}`);
 
     if (lang === "en") {
       const info = streamInfoCache.get(key);
-      if (!info || !info.subtitleUrl) return res.status(404).send("no subtitle");
+      if (!info || !info.subtitleUrl) return res.status(404).send("altyazi yok");
       const buf = await curlFetch(info.subtitleUrl);
-      if (!buf) return res.status(500).send("fetch fail");
+      if (!buf) return res.status(500).send("indirme hatasi");
       res.setHeader("Content-Type", "text/vtt; charset=utf-8");
       return res.send(buf.toString("utf8"));
     }
 
     if (subtitleCache.has(key)) {
-      log("SUBREQ", `${key} - cache HIT (TR)`);
+      log("SUBREQ", `${key} cache HIT (TR)`);
       res.setHeader("Content-Type", "text/vtt; charset=utf-8");
       return res.send(subtitleCache.get(key));
     }
@@ -533,12 +578,12 @@ app.get("/api/subtitle", async (req, res) => {
     let info = streamInfoCache.get(key);
 
     if (!info || !info.subtitleUrl) {
-      log("SUBREQ", `${key} - cache bos, yeniden fetch`);
+      log("SUBREQ", `${key} cache bos, yeniden fetch`);
       try {
-        const fresh = await scraperQueue.run(() => fetchStreamInfo(id, ep));
+        const fresh = await scraperQueue.run(() => fetchStreamInfo(id, ep, videoMode));
         if (fresh) {
           info = fresh;
-          streamInfoCache.set(key, { m3u8: fresh.m3u8, subtitleUrl: fresh.subtitleUrl });
+          streamInfoCache.set(key, { m3u8: fresh.m3u8, subtitleUrl: fresh.subtitleUrl, mode: fresh.mode });
           setTimeout(() => streamInfoCache.delete(key), CONFIG.CACHE_TTL);
         }
       } catch (e) {
@@ -547,22 +592,22 @@ app.get("/api/subtitle", async (req, res) => {
     }
 
     if (!info || !info.subtitleUrl) {
-      log("SUBREQ", `${key} - subtitle URL yok`);
-      return res.status(404).send("no subtitle");
+      log("SUBREQ", `${key} altyazi URL yok`);
+      return res.status(404).send("altyazi yok");
     }
 
-    log("SUBREQ", `${key} - ceviri bekleniyor`);
+    log("SUBREQ", `${key} ceviri bekleniyor`);
     let job = subtitleJobs.get(key);
     if (!job) {
-      job = generateTranslatedSubtitle(info.subtitleUrl, key);
+      job = generateTranslatedSubtitle(info.subtitleUrl, key, videoMode);
       subtitleJobs.set(key, job);
       job.finally(() => subtitleJobs.delete(key));
     }
 
     const result = await job;
-    if (!result) return res.status(500).send("translate fail");
+    if (!result) return res.status(500).send("ceviri basarisiz");
 
-    log("SUBREQ", `${key} - ceviri OK`);
+    log("SUBREQ", `${key} ceviri OK`);
     res.setHeader("Content-Type", "text/vtt; charset=utf-8");
     res.send(result);
   } catch (e) {
@@ -572,8 +617,9 @@ app.get("/api/subtitle", async (req, res) => {
 });
 
 app.get("/api/subtitle-status", (req, res) => {
-  const { id, ep } = req.query;
-  const key = `${id}_${ep}`;
+  const { id, ep, mode } = req.query;
+  const videoMode = mode === "dub" ? "dub" : "sub";
+  const key = `${id}_${ep}_${videoMode}`;
   const info = streamInfoCache.get(key);
 
   res.json({
@@ -657,9 +703,14 @@ app.get("/api/debug", async (req, res) => {
     m3u8Found: !!m3u8,
     subtitleFound: !!sub,
     subtitleSample: sub,
-    error: result.error || null,
-    plan: CONFIG.PLAN
+    error: result.error || null
   });
+});
+
+app.get("/api/translate-test", async (req, res) => {
+  const text = req.query.text || "Hello world";
+  const result = await translateText(text);
+  res.json({ input: text, output: result });
 });
 
 app.get("/health", (req, res) => {
@@ -711,7 +762,7 @@ io.on("connection", (socket) => {
       socket.emit("video-state", currentState);
     }
 
-    log("JOIN", `${isAdmin ? "ADMIN" : "VIEWER"} ${deviceId}`);
+    log("JOIN", `${isAdmin ? "ADMIN" : "IZLEYICI"} ${deviceId}`);
   });
 
   socket.on("video-load", (data) => {
@@ -723,6 +774,7 @@ io.on("connection", (socket) => {
       title: data.title || "Video",
       animeId: data.animeId || null,
       episode: data.episode || 1,
+      mode: data.mode || "sub",
       hasSubtitles: !!data.hasSubtitles,
       startedAt: Date.now()
     };
@@ -763,7 +815,8 @@ server.listen(CONFIG.PORT, "0.0.0.0", () => {
   console.log(`Sunucu ${CONFIG.PORT} portunda`);
   console.log(`Admin: ${adminDeviceId || "(ilk girene)"}`);
   console.log(`API: ScraperAPI`);
-  console.log(`Plan: ${CONFIG.PLAN.map((p) => `${p.variant}/${p.country}`).join(" > ")}`);
+  console.log(`Sub plan: ${CONFIG.PLAN_SUB.map((p) => `${p.variant}/${p.country}`).join(" > ")}`);
+  console.log(`Dub plan: ${CONFIG.PLAN_DUB.map((p) => `${p.variant}/${p.country}`).join(" > ")}`);
   console.log("===========================================");
 });
 
