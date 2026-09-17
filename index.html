@@ -264,7 +264,19 @@ function loadVideoSource(rawUrl) {
     hls = new Hls({ enableWorker: true, lowLatencyMode: false, maxBufferLength: 30 });
     hls.loadSource(proxyUrl);
     hls.attachMedia(video);
-    hls.on(Hls.Events.MANIFEST_PARSED, () => log("Manifest hazır"));
+    hls.on(Hls.Events.MANIFEST_PARSED, () => {
+  // ⚡ HLS'in kendi altyazılarını KAPAT (Türkçe ile çakışmasın)
+  try {
+    hls.subtitleDisplay = false;
+    hls.subtitleTrack = -1;
+  } catch (e) {}
+  // m3u8 içindeki İngilizce track'leri de gizle
+  const vt = video.textTracks;
+  for (let i = 0; i < vt.length; i++) {
+    vt[i].mode = "disabled";
+  }
+  log("Manifest hazır");
+});
     hls.on(Hls.Events.ERROR, (e, d) => {
       if (d.fatal) log("HLS hata: " + d.details);
     });
@@ -305,8 +317,13 @@ video.addEventListener("seeked", () => {
 
 function attachTurkishSubtitle() {
   if (!currentAnime) return;
-  if (trTrack) return;
-  const url = `/api/subtitle?id=${currentAnime.id}&ep=${epInput.value}&lang=tr`;
+
+  // Eski track'leri temizle
+  video.querySelectorAll("track").forEach((t) => t.remove());
+  trTrack = null;
+
+  const url = `/api/subtitle?id=${currentAnime.id}&ep=${epInput.value}&lang=tr&t=${Date.now()}`;
+  log("Türkçe altyazı yükleniyor...");
 
   const track = document.createElement("track");
   track.kind = "subtitles";
@@ -316,14 +333,32 @@ function attachTurkishSubtitle() {
   track.default = true;
   video.appendChild(track);
 
-  track.addEventListener("load", () => {
-    log("Türkçe altyazı hazır");
-    setSubStatus("ok", "Altyazı: Türkçe");
-    trTrack = track;
-    for (let i = 0; i < video.textTracks.length; i++) {
-      video.textTracks[i].mode = "disabled";
+  const forceShow = () => {
+    const tracks = video.textTracks;
+    let found = false;
+    for (let i = 0; i < tracks.length; i++) {
+      if (tracks[i].language === "tr" || tracks[i].label === "Türkçe") {
+        tracks[i].mode = "showing";
+        trTrack = tracks[i];
+        found = true;
+      } else {
+        tracks[i].mode = "disabled";
+      }
     }
-    track.track.mode = "showing";
+    if (found) {
+      log("Türkçe altyazı aktif");
+      setSubStatus("ok", "Altyazı: Türkçe");
+    }
+  };
+
+  // Zorla göster (HLS ile çakışmaması için 3 deneme)
+  setTimeout(forceShow, 500);
+  setTimeout(forceShow, 2000);
+  setTimeout(forceShow, 4000);
+
+  track.addEventListener("load", () => {
+    log("Türkçe altyazı yüklendi");
+    forceShow();
   });
 
   track.addEventListener("error", () => {
