@@ -283,7 +283,15 @@ async function fetchMasterContent(m3u8Url) {
   const buf = await curlFetch(m3u8Url);
   return buf ? buf.toString("utf8") : null;
 }
-
+function extractSubtitleFromHtml(html) {
+  if (!html) return null;
+  const regex = /https?:\/\/[^"'\s\\<>]+\.(?:vtt|srt)[^"'\s\\<>]*/g;
+  const matches = html.match(regex) || [];
+  if (matches.length === 0) return null;
+  const decoded = decodeHtmlEntities(matches[0]);
+  log("SUB", `HTML'den altyazi bulundu`);
+  return decoded;
+}
 function extractSubtitleUrl(masterContent, baseUrl) {
   if (!masterContent) return null;
 
@@ -490,23 +498,27 @@ app.get("/api/stream", async (req, res) => {
       });
     }
 
-    log("STREAM", key);
-    const m3u8 = await scraperQueue.run(() => fetchM3u8WithPlans(id, ep));
+log("STREAM", key);
+const result = await scraperQueue.run(() => fetchM3u8WithPlans(id, ep));
 
-    clearTimeout(routeTimeout);
+clearTimeout(routeTimeout);
 
-    if (!m3u8) {
-      return res.json({ error: "Video bulunamadi. Farkli bolum deneyin." });
-    }
+if (!result || !result.m3u8) {
+  return res.json({ error: "Video bulunamadi. Farkli bolum deneyin." });
+}
 
-    m3u8Cache.set(key, m3u8);
-    setTimeout(() => m3u8Cache.delete(key), CONFIG.CACHE_TTL);
+const m3u8 = result.m3u8;
+let subtitleUrl = result.subtitleUrl;
 
-    let subtitleUrl = null;
-    try {
-      const master = await fetchMasterContent(m3u8);
-      subtitleUrl = extractSubtitleUrl(master, m3u8);
-    } catch (e) {}
+m3u8Cache.set(key, m3u8);
+setTimeout(() => m3u8Cache.delete(key), CONFIG.CACHE_TTL);
+
+if (!subtitleUrl) {
+  try {
+    const master = await fetchMasterContent(m3u8);
+    subtitleUrl = extractSubtitleUrl(master, m3u8);
+  } catch (e) {}
+}
 
     streamInfoCache.set(key, { m3u8, subtitleUrl });
     setTimeout(() => streamInfoCache.delete(key), CONFIG.CACHE_TTL);
