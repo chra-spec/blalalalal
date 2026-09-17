@@ -21,18 +21,17 @@ app.use(express.static(__dirname));
 const CONFIG = {
   PORT: process.env.PORT || 3000,
   ADMIN_FILE: "/data/admin.json",
-  SA_KEY: "5afe1cef7c424ea4a815fed93182dbcd",
-  SA_ENDPOINT: "https://api.scrapingant.com/v2/general",
+  SA_KEY: "90b9a65c2e799e5af2d8a774cb657e1",
+  SA_ENDPOINT: "https://api.scraperapi.com",
   CACHE_TTL: 60 * 60 * 1000,
   SUB_CACHE_TTL: 6 * 60 * 60 * 1000,
-  API_TIMEOUT: 15000,
-  QUEUE_TIMEOUT: 70000,
-  STREAM_ROUTE_TIMEOUT: 55000,
+  API_TIMEOUT: 40000,
+  QUEUE_TIMEOUT: 120000,
+  STREAM_ROUTE_TIMEOUT: 110000,
   TRANSLATE_CONCURRENCY: 6,
   PLAN: [
     { country: "us", variant: "sub" },
-    { country: "us", variant: "dub" },
-    { country: "gb", variant: "sub" }
+    { country: "us", variant: "sub" }
   ]
 };
 
@@ -139,15 +138,14 @@ class SerialQueue {
 
 const scraperQueue = new SerialQueue();
 
-async function callScrapingAnt(targetUrl, country) {
+async function callScraperAPI(targetUrl, country) {
   if (!CONFIG.SA_KEY) return { html: null, status: 0, error: "no_key" };
 
   const params = new URLSearchParams({
+    api_key: CONFIG.SA_KEY,
     url: targetUrl,
-    "x-api-key": CONFIG.SA_KEY,
-    browser: "true",
-    wait_until: "domcontentloaded",
-    proxy_country: country || "us"
+    render: "true",
+    country_code: country || "us"
   });
 
   const apiUrl = `${CONFIG.SA_ENDPOINT}?${params.toString()}`;
@@ -199,7 +197,12 @@ function isCloudflareBlock(html) {
 
 function isConcurrencyError(html) {
   if (!html) return false;
-  return html.includes("concurrency") || html.includes("Free user concurrency");
+  return html.includes("concurrency") ||
+         html.includes("Free user concurrency") ||
+         html.includes("rate limit") ||
+         html.includes("too many requests") ||
+         html.includes("insufficient credit") ||
+         html.includes("credits");
 }
 
 async function fetchM3u8WithPlans(animeId, episode) {
@@ -211,12 +214,13 @@ async function fetchM3u8WithPlans(animeId, episode) {
 
     log("PLAN", `#${i + 1} ${plan.variant}/${plan.country}`);
 
-    const result = await callScrapingAnt(targetUrl, plan.country);
+    const result = await callScraperAPI(targetUrl, plan.country);
 
-    if (result.html && isConcurrencyError(result.html)) {
-      log("RETRY", "Concurrency, 4s bekle");
-      await new Promise((r) => setTimeout(r, 4000));
-      const retry = await callScrapingAnt(targetUrl, plan.country);
+    const isLimitError = result.status === 429 || result.status === 409 || result.status === 401 || result.status === 403;
+    if (isLimitError || (result.html && isConcurrencyError(result.html))) {
+      log("RETRY", "Limit, 6s bekle");
+      await new Promise((r) => setTimeout(r, 6000));
+      const retry = await callScraperAPI(targetUrl, plan.country);
       if (retry.html && !isConcurrencyError(retry.html)) {
         const m3u8 = extractM3u8(retry.html);
         if (m3u8) {
@@ -624,7 +628,7 @@ app.get("/api/proxy", async (req, res) => {
 app.get("/api/debug", async (req, res) => {
   const url = req.query.url || "https://vidnest.fun/anime/21355/1/sub";
   const country = req.query.country || "us";
-  const result = await callScrapingAnt(url, country);
+  const result = await callScraperAPI(url, country);
   const m3u8 = extractM3u8(result.html);
 
   res.json({
@@ -742,7 +746,7 @@ server.listen(CONFIG.PORT, "0.0.0.0", () => {
   console.log("===========================================");
   console.log(`Sunucu ${CONFIG.PORT} portunda`);
   console.log(`Admin: ${adminDeviceId || "(ilk girene)"}`);
-  console.log(`API Key: ${CONFIG.SA_KEY ? "AKTIF" : "YOK"}`);
+  console.log(`API: ScraperAPI`);
   console.log(`Plan: ${CONFIG.PLAN.map((p) => `${p.variant}/${p.country}`).join(" > ")}`);
   console.log("===========================================");
 });
