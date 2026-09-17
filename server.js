@@ -262,7 +262,26 @@ function curlFetch(url) {
 // ═══════════════════════════════════════════════════════════
 // SRT → VTT DÖNÜŞTÜRÜCÜ
 // ═══════════════════════════════════════════════════════════
-
+function applyVttOffset(vttText, offsetSeconds) {
+  if (!offsetSeconds || offsetSeconds === 0) return vttText;
+  const lines = vttText.split("\n");
+  return lines.map((line) => {
+    const m = line.match(/^(\d{2}:\d{2}:\d{2}\.\d{3})\s*-->\s*(\d{2}:\d{2}:\d{2}\.\d{3})/);
+    if (!m) return line;
+    const shift = (timeStr) => {
+      const parts = timeStr.split(":");
+      let total = parseFloat(parts[0]) * 3600 + parseFloat(parts[1]) * 60 + parseFloat(parts[2]);
+      total += offsetSeconds;
+      if (total < 0) total = 0;
+      const h = Math.floor(total / 3600);
+      const mn = Math.floor((total % 3600) / 60);
+      const s = total % 60;
+      const ss = s.toFixed(3).padStart(6, "0");
+      return `${String(h).padStart(2, "0")}:${String(mn).padStart(2, "0")}:${ss}`;
+    };
+    return `${shift(m[1])} --> ${shift(m[2])}`;
+  }).join("\n");
+}
 function srtToVtt(srtText) {
   if (!srtText) return "";
   const clean = srtText.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
@@ -342,7 +361,15 @@ async function searchOpenSubtitles(query, season, episode) {
     const results = filtered.length > 0 ? filtered : data;
 
     // En yüksek indirmeye sahip olanı seç
-    results.sort((a, b) => (b.attributes.download_count || 0) - (a.attributes.download_count || 0));
+    // ⚡ En uygun olanı seç: aynı bölüm numarası + yüksek indirme sayısı
+results.sort((a, b) => {
+  const aEp = a.attributes.feature_details && a.attributes.feature_details.episode_number;
+  const bEp = b.attributes.feature_details && b.attributes.feature_details.episode_number;
+  const aMatch = String(aEp) === String(episode) ? 1 : 0;
+  const bMatch = String(bEp) === String(episode) ? 1 : 0;
+  if (aMatch !== bMatch) return bMatch - aMatch;
+  return (b.attributes.download_count || 0) - (a.attributes.download_count || 0);
+});
 
     const best = results[0];
     const fileId = best.attributes.files && best.attributes.files[0] ? best.attributes.files[0].file_id : null;
@@ -537,11 +564,15 @@ app.get("/api/subtitle", async (req, res) => {
     const key = `${id}_${ep}_${videoMode}`;
     log("SUBREQ", `${key} lang=${lang} title=${title}`);
 
-    if (subtitleCache.has(key)) {
-      log("SUBREQ", `${key} cache HIT`);
-      res.setHeader("Content-Type", "text/vtt; charset=utf-8");
-      return res.send(subtitleCache.get(key));
-    }
+const offset = parseFloat(req.query.offset) || 0;
+
+if (subtitleCache.has(key)) {
+  log("SUBREQ", `${key} cache HIT offset=${offset}`);
+  let cachedVtt = subtitleCache.get(key);
+  if (offset !== 0) cachedVtt = applyVttOffset(cachedVtt, offset);
+  res.setHeader("Content-Type", "text/vtt; charset=utf-8");
+  return res.send(cachedVtt);
+}
 
     // İş hâlâ devam ediyorsa bekle
     if (subtitleJobs.has(key)) {
@@ -553,25 +584,25 @@ app.get("/api/subtitle", async (req, res) => {
       }
     }
 
-    // İş yoksa yeniden başlat
-    if (title) {
-      const seasonNum = parseInt(season) || 1;
-      const episodeNum = parseInt(ep) || 1;
-      const job = fetchTurkishSubtitle(title, seasonNum, episodeNum).then((vtt) => {
-        if (vtt) {
-          subtitleCache.set(key, vtt);
-          setTimeout(() => subtitleCache.delete(key), CONFIG.SUB_CACHE_TTL);
-        }
-        return vtt;
-      }).finally(() => subtitleJobs.delete(key));
-      subtitleJobs.set(key, job);
-
-      const result = await job;
-      if (result) {
-        res.setHeader("Content-Type", "text/vtt; charset=utf-8");
-        return res.send(result);
-      }
+if (title) {
+  const seasonNum = parseInt(season) || 1;
+  const episodeNum = parseInt(ep) || 1;
+  const job = fetchTurkishSubtitle(title, seasonNum, episodeNum).then((vtt) => {
+    if (vtt) {
+      subtitleCache.set(key, vtt);
+      setTimeout(() => subtitleCache.delete(key), CONFIG.SUB_CACHE_TTL);
     }
+    return vtt;
+  }).finally(() => subtitleJobs.delete(key));
+  subtitleJobs.set(key, job);
+
+  let result = await job;
+  if (result) {
+    if (offset !== 0) result = applyVttOffset(result, offset);
+    res.setHeader("Content-Type", "text/vtt; charset=utf-8");
+    return res.send(result);
+  }
+}
 
     return res.status(404).send("altyazi yok");
   } catch (e) {
