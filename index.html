@@ -95,8 +95,10 @@
   <div id="results" class="results"></div>
 
   <div class="section-title">Bölüm ve Mod</div>
-  <div class="controls">
-    <label>Sezon:</label>
+  <label>Altyazı Kaydır:</label>
+<button onclick="shiftSubtitle(-1)" style="padding:5px 10px;background:#e74c3c;border:none;border-radius:5px;color:#fff;cursor:pointer;font-weight:700">-1s</button>
+<button onclick="shiftSubtitle(1)" style="padding:5px 10px;background:#27ae60;border:none;border-radius:5px;color:#fff;cursor:pointer;font-weight:700">+1s</button>
+<span id="subOffsetLabel" style="font-size:11px;color:#888">0s</span>
     <input type="number" id="seasonInput" value="1" min="1" max="20" onchange="onEpChange()">
     <label>Bölüm:</label>
     <input type="number" id="epInput" value="1" min="1" max="9999" onchange="onEpChange()">
@@ -158,7 +160,15 @@ let subtitlePollInterval = null;
 let lastKnownTime = 0;
 let lastKnownKey = null;
 let restoringPosition = false;
-
+let subtitleOffset = 0;
+const subtitleOffsetStore = {
+  get: (key) => {
+    try { return parseFloat(localStorage.getItem("subOffset_" + key) || "0"); } catch (e) { return 0; }
+  },
+  set: (key, val) => {
+    try { localStorage.setItem("subOffset_" + key, String(val)); } catch (e) {}
+  }
+};
 function log(msg) {
   const line = document.createElement("div");
   line.className = "line";
@@ -360,7 +370,10 @@ video.addEventListener("timeupdate", () => {
 
 function attachTurkishSubtitle(animeId, ep, mode, season, anime) {
   if (!animeId) return;
-
+const offsetKey = `${animeId}_${ep}_${mode}`;
+subtitleOffset = subtitleOffsetStore.get(offsetKey);
+const offsetLabel = document.getElementById("subOffsetLabel");
+if (offsetLabel) offsetLabel.textContent = (subtitleOffset > 0 ? "+" : "") + subtitleOffset + "s";
   video.querySelectorAll("track").forEach((t) => t.remove());
   trTrack = null;
 
@@ -368,7 +381,7 @@ function attachTurkishSubtitle(animeId, ep, mode, season, anime) {
   const romaji = encodeURIComponent(anime.titleRomaji || "");
   const titleForOs = title || romaji;
 
-  const url = `/api/subtitle?id=${animeId}&ep=${ep}&mode=${mode}&season=${season}&lang=tr&title=${titleForOs}&t=${Date.now()}`;
+  const url = `/api/subtitle?id=${animeId}&ep=${ep}&mode=${mode}&season=${season}&lang=tr&title=${titleForOs}&offset=${subtitleOffset}&t=${Date.now()}`;
   log("Türkçe altyazı yükleniyor...");
 
   const track = document.createElement("track");
@@ -437,7 +450,28 @@ async function startSubtitleFlow(animeId, episode, mode, season, anime) {
     } catch (e) {}
   }, 2000);
 }
+function shiftSubtitle(seconds) {
+  if (!currentAnime) return;
+  const ep = parseInt(epInput.value) || 1;
+  const mode = modeSelect.value || "sub";
+  const key = `${currentAnime.id}_${ep}_${mode}`;
 
+  subtitleOffset = Math.round((subtitleOffset + seconds) * 10) / 10;
+  if (subtitleOffset > 30) subtitleOffset = 30;
+  if (subtitleOffset < -30) subtitleOffset = -30;
+
+  subtitleOffsetStore.set(key, subtitleOffset);
+
+  const offsetLabel = document.getElementById("subOffsetLabel");
+  if (offsetLabel) offsetLabel.textContent = (subtitleOffset > 0 ? "+" : "") + subtitleOffset + "s";
+
+  log(`Altyazı kaydırma: ${subtitleOffset > 0 ? "+" : ""}${subtitleOffset}s`);
+
+  // Altyazıyı yeniden yükle (yeni offset ile)
+  if (hasVideo && currentAnime) {
+    attachTurkishSubtitle(currentAnime.id, ep, mode, parseInt(seasonInput.value) || 1, currentAnime);
+  }
+}
 function resetSubtitleState() {
   if (subtitlePollInterval) {
     clearInterval(subtitlePollInterval);
